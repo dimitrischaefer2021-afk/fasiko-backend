@@ -1,0 +1,39 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: fasiko-backend
+    environment:
+      APP_NAME: FaSiKo-Studio Backend
+      DATABASE_URL: sqlite:////data/app.db
+      PYTHONPATH: /app
+
+      # --- Chat/Ollama ---
+      OLLAMA_URL: http://ollama:11434
+      OLLAMA_CHAT_MODEL: llama3.1:8b
+
+      # optional: where chat uploads are stored
+      CHAT_DIR: /data/chat
+      # enforce 30MB
+      MAX_UPLOAD_BYTES: 31457280
+    ports:
+      - "8000:8000"
+    volumes:
+      - fasiko_data:/data
+    depends_on:
+      - ollama
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: fasiko-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+
+volumes:
+  fasiko_data:
+  ollama_data:
