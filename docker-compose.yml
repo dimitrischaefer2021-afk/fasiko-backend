@@ -1,30 +1,64 @@
+version: "3.9"
+
 services:
+  # PostgreSQL‑Datenbankservice
+  db:
+    image: postgres:16-alpine
+    container_name: fasiko-db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-fasiko_db}
+      POSTGRES_USER: ${POSTGRES_USER:-fasiko_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fasiko_pass}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  # Backend‑Anwendung (FastAPI)
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
     container_name: fasiko-backend
+    # Lade die Umgebungsvariablen aus der .env-Datei; zusätzlich werden
+    # explizit erforderliche Variablen gesetzt. Die meisten Werte sind
+    # optional, da ``settings.py`` Defaultwerte definiert.
     environment:
-      APP_NAME: FaSiKo-Studio Backend
-      DATABASE_URL: sqlite:////data/app.db
-      PYTHONPATH: /app
-
-      # --- Chat/Ollama ---
-      OLLAMA_URL: http://ollama:11434
-      OLLAMA_CHAT_MODEL: llama3.1:8b
-
-      # optional: where chat uploads are stored
-      CHAT_DIR: /data/chat
-      # enforce 30MB
-      MAX_UPLOAD_BYTES: 31457280
+      APP_NAME: ${APP_NAME:-FaSiKo‑Studio Backend}
+      ENV_PROFILE: ${ENV_PROFILE:-prod}
+      DATABASE_URL: ${DATABASE_URL:-}
+      POSTGRES_DB: ${POSTGRES_DB:-fasiko_db}
+      POSTGRES_USER: ${POSTGRES_USER:-fasiko_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fasiko_pass}
+      OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
+      OLLAMA_CHAT_MODEL: ${OLLAMA_CHAT_MODEL:-llama3.1:8b}
+      MODEL_FASIKO_CREATE_70B: ${MODEL_FASIKO_CREATE_70B:-llama3.1:70b}
+      MODEL_GENERAL_8B: ${MODEL_GENERAL_8B:-llama3.1:8b}
+      SEARXNG_URL: ${SEARXNG_URL:-http://searxng:8080}
+      WEBSEARCH_MAX_RESULTS: ${WEBSEARCH_MAX_RESULTS:-5}
+      WEBSEARCH_TIMEOUT: ${WEBSEARCH_TIMEOUT:-15}
+      WEBSEARCH_MAX_QUERY_LENGTH: ${WEBSEARCH_MAX_QUERY_LENGTH:-200}
+      UPLOAD_DIR: ${UPLOAD_DIR:-/data/uploads}
+      OPENPOINT_DIR: ${OPENPOINT_DIR:-/data/openpoints}
+      CHAT_DIR: ${CHAT_DIR:-/data/chat}
+      EXPORT_DIR: ${EXPORT_DIR:-/data/exports}
+      MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-31457280}
+      MAX_SOURCES_PER_PROJECT: ${MAX_SOURCES_PER_PROJECT:-50}
+      MAX_PARALLEL_JOBS: ${MAX_PARALLEL_JOBS:-3}
+      JOB_TIMEOUT: ${JOB_TIMEOUT:-1800}
+      API_KEY_ENABLED: ${API_KEY_ENABLED:-false}
+      API_KEY: ${API_KEY:-}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-*}
+    volumes:
+      - backend_data:/data
+    depends_on:
+      - db
+      - ollama
+      - searxng
     ports:
       - "8000:8000"
-    volumes:
-      - fasiko_data:/data
-    depends_on:
-      - ollama
     restart: unless-stopped
 
+  # Ollama‑LLM‑Service (liefert die Modelle)
   ollama:
     image: ollama/ollama:latest
     container_name: fasiko-ollama
@@ -34,6 +68,20 @@ services:
       - ollama_data:/root/.ollama
     restart: unless-stopped
 
+  # SearXNG‑Metasuchmaschine für Webrecherche
+  searxng:
+    image: searxng/searxng:latest
+    container_name: fasiko-searxng
+    environment:
+      BASE_URL: ${SEARXNG_URL:-http://searxng:8080}
+    ports:
+      - "8080:8080"
+    volumes:
+      - searxng_data:/etc/searxng
+    restart: unless-stopped
+
 volumes:
-  fasiko_data:
+  backend_data:
+  pg_data:
   ollama_data:
+  searxng_data:

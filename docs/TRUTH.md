@@ -2,7 +2,7 @@ Wahrheitsquelle für FaSiKo‑Backend
 
 Dieses Dokument beschreibt den aktuellen Ist‑Zustand des Backends (Stand Block 01).
 
-Ausgangsarchitektur
+Ausgangsarchitektur (nach Block 03)
 	•	Das Backend ist als FastAPI‑Anwendung implementiert (Python 3.11) und läuft im Docker‑Container.
 	•	Es gibt einen Ordner backend/app mit folgenden Modulen:
 	•	main.py: startet die FastAPI‑App und registriert Router für Projekte, Artefakte, offene Punkte, Chat und Health.
@@ -18,10 +18,15 @@ Ausgangsarchitektur
 	•	open_points.py – CRUD für offene Punkte sowie Anhänge und Beantworten von Punkten.
 	•	chat.py – Chat‑Sessions und Nachrichten mit Uploads. Der Chat nutzt Ollama über die Umgebungsvariable OLLAMA_URL und ein Modell (OLLAMA_CHAT_MODEL) für Antworten.
 	•	health.py – einfacher Health‑Check.
-	•	Im Repository liegt eine docker-compose.yml, die zwei Dienste startet: backend (FastAPI) und ollama (LLM Server). Die Datenpersistenz wird über fasiko_data und ollama_data Volumes realisiert. Standardmäßig wird sqlite genutzt.
+	•	Im Repository liegt eine docker-compose.yml, die vier Dienste startet:
+	•	db: PostgreSQL 16‑alpine mit persistentem Volume (pg_data).
+	•	backend: FastAPI‑Server mit Uvicorn. Dieser Dienst führt beim Start automatisch Alembic‑Migrationen aus und verbindet sich mit der PostgreSQL‑Datenbank.
+	•	ollama: LLM‑Server, der die Modelle llama3.1:8b und llama3.1:70b bereitstellt.
+	•	searxng: selbst gehostete Metasuchmaschine für Webrecherche.
+Datenpersistenz erfolgt über Volumes: backend_data, pg_data, ollama_data und searxng_data. Die Anwendung verwendet nun PostgreSQL als Standarddatenbank.
 
-Bekannte Einschränkungen
-	•	Es gibt noch keine PostgreSQL‑Unterstützung und keine Migration (SQLite wird direkt verwendet).
+Bekannte Einschränkungen (nach Block 03)
+	•	Die Migration auf PostgreSQL ist implementiert. Für lokale Experimente kann weiterhin SQLite genutzt werden, indem in der .env eine entsprechende DATABASE_URL gesetzt wird.
 	•	Die KI‑Logik zur Generierung von FaSiKo‑Dokumenten aus Quellen und zur Erzeugung offener Punkte fehlt.
 	•	Der Chat‑Endpoint bietet noch keine Websuche; es wird lediglich der LLM über Ollama angesprochen.
 	•	Es gibt keine LLM‑Routing‑Logik für 70B‑/8B‑Modelle und keine Konfiguration per .env.example.
@@ -103,4 +108,14 @@ API‑Schlüssel (wenn aktiviert)
 CORS_ALLOWED_ORIGINS
 Liste erlaubter Ursprünge (* für alle)
 *
+
+Ab Block 03 gibt es zusätzliche Variablen für die PostgreSQL‑Datenbank:
+	•	POSTGRES_DB – Name der Datenbank (Standard: fasiko_db).
+	•	POSTGRES_USER – Benutzername für die Verbindung (Standard: fasiko_user).
+	•	POSTGRES_PASSWORD – Passwort (Standard: fasiko_pass).
+	•	POSTGRES_HOST – Hostname des Datenbankservers (Standard: db innerhalb von Docker).
+	•	POSTGRES_PORT – Port des Datenbankservers (Standard: 5432).
+
+Wenn in der Umgebung keine DATABASE_URL gesetzt ist, baut das Backend aus diesen Parametern automatisch eine PostgreSQL‑URL im Format postgresql+psycopg2://<USER>:<PASS>@<HOST>:<PORT>/<DB>. Für lokale Tests können Sie alternativ weiterhin eine SQLite‑URL angeben (beispielsweise sqlite:////tmp/fasiko.db).
+
 Diese Datei wird mit jedem Block aktualisiert, um den Stand der Wahrheit zu dokumentieren.

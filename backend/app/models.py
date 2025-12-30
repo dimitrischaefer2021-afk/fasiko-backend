@@ -1,13 +1,29 @@
+"""
+Definition aller Datenbankmodelle für das FaSiKo‑Backend.
+
+Die Tabellen umfassen Projekte, Quellen, Artefakte mit Versionen,
+Offene Punkte sowie Chat‑Sessions und ‑Nachrichten. Alle IDs
+werden als UUIDs (Strings) gespeichert. Zeitstempel werden als
+timezone‑aware ``datetime`` Werte gespeichert.
+"""
+
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import String, DateTime, Integer, ForeignKey, Text
+from sqlalchemy import (
+    String,
+    DateTime,
+    Integer,
+    ForeignKey,
+    Text,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
 
 
 def utc_now() -> datetime:
+    """Hilfsfunktion zum Erzeugen eines UTC‑Zeitstempels."""
     return datetime.now(timezone.utc)
 
 
@@ -21,12 +37,20 @@ class Project(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now, onupdate=utc_now)
 
-    sources: Mapped[list["SourceDocument"]] = relationship(back_populates="project", cascade="all, delete-orphan")
-    artifacts: Mapped[list["Artifact"]] = relationship(back_populates="project", cascade="all, delete-orphan")
-    open_points: Mapped[list["OpenPoint"]] = relationship(back_populates="project", cascade="all, delete-orphan")
+    sources: Mapped[list["SourceDocument"]] = relationship(
+        back_populates="project", cascade="all, delete-orphan"
+    )
+    artifacts: Mapped[list["Artifact"]] = relationship(
+        back_populates="project", cascade="all, delete-orphan"
+    )
+    open_points: Mapped[list["OpenPoint"]] = relationship(
+        back_populates="project", cascade="all, delete-orphan"
+    )
 
-    # optional later: connect chats to projects (we allow nullable project_id on sessions)
-    chat_sessions: Mapped[list["ChatSession"]] = relationship(back_populates="project", cascade="all, delete-orphan")
+    # optional später: Chat‑Sessions zu Projekten zuordnen
+    chat_sessions: Mapped[list["ChatSession"]] = relationship(
+        back_populates="project", cascade="all, delete-orphan"
+    )
 
 
 class SourceDocument(Base):
@@ -34,7 +58,6 @@ class SourceDocument(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
-
     group_id: Mapped[str] = mapped_column(String(36), nullable=False)
 
     filename: Mapped[str] = mapped_column(String(512), nullable=False)
@@ -91,22 +114,23 @@ class ArtifactVersion(Base):
 
 class OpenPoint(Base):
     """
-    Open Point = a missing info/question that must be answered for project completeness.
+    Offener Punkt = fehlende Information / Frage, die beantwortet werden muss.
 
     status: offen | in_bearbeitung | fertig | archiviert
     priority: kritisch | wichtig | nice-to-have
     input_type: text | choice | file
     """
+
     __tablename__ = "open_points"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
 
-    # flexible references (optional)
+    # flexible Referenzen (optional)
     artifact_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("artifacts.id", ondelete="SET NULL"), nullable=True)
-    bsi_ref: Mapped[str | None] = mapped_column(String(200), nullable=True)  # e.g., "APP.1.2", "SYS.2.1"
-    section_ref: Mapped[str | None] = mapped_column(String(300), nullable=True)  # e.g., "Kapitel 3.2"
-    category: Mapped[str | None] = mapped_column(String(100), nullable=True)  # e.g., "Technik", "Organisation"
+    bsi_ref: Mapped[str | None] = mapped_column(String(200), nullable=True)  # z. B. "APP.1.2", "SYS.2.1"
+    section_ref: Mapped[str | None] = mapped_column(String(300), nullable=True)  # z. B. "Kapitel 3.2"
+    category: Mapped[str | None] = mapped_column(String(100), nullable=True)  # z. B. "Technik", "Organisation"
 
     question: Mapped[str] = mapped_column(String(2000), nullable=False)
     input_type: Mapped[str] = mapped_column(String(20), nullable=False, default="text")  # text|choice|file
@@ -114,7 +138,7 @@ class OpenPoint(Base):
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="offen")
     priority: Mapped[str] = mapped_column(String(30), nullable=False, default="wichtig")
 
-    # Answer storage (MVP: only save, no triggers)
+    # Speicherung der Antwort (MVP: nur einfache Speicherung, keine Trigger)
     answer_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     answer_choice: Mapped[str | None] = mapped_column(String(300), nullable=True)
 
@@ -146,14 +170,15 @@ class OpenPointAttachment(Base):
     open_point: Mapped["OpenPoint"] = relationship(back_populates="attachments")
 
 
-# ----------------- Chat (Block 5) -----------------
+# ----------------- Chat‑Modelle -----------------
+
 
 class ChatSession(Base):
     __tablename__ = "chat_sessions"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
 
-    # optional: link to a project later
+    # optional: Projektbezug (nullable)
     project_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("projects.id", ondelete="SET NULL"), nullable=True)
 
     title: Mapped[str | None] = mapped_column(String(200), nullable=True)
