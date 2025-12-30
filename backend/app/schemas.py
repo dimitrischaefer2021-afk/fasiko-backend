@@ -1,3 +1,11 @@
+"""
+Pydantic‑Schemas für das FaSiKo‑Backend.
+
+Diese Datei definiert die Datenstrukturen für Anfragen und Antworten der API.
+Die Klassen sind eng an die zugrunde liegenden Datenbankmodelle angelehnt und
+ermöglichen eine klare Typisierung sowie Validierung der Eingaben.
+"""
+
 from datetime import datetime
 from pydantic import BaseModel, Field
 
@@ -18,6 +26,7 @@ class ProjectOut(BaseModel):
     description: str | None
     created_at: datetime
     updated_at: datetime
+
     model_config = {"from_attributes": True}
 
 
@@ -27,6 +36,7 @@ class HealthOut(BaseModel):
 
 
 # -------- Sources (Uploads) --------
+
 
 class SourceOut(BaseModel):
     id: str
@@ -51,6 +61,7 @@ class SourceReplaceOut(BaseModel):
 
 
 # -------- Artifacts (Documents) + Versioning --------
+
 
 class ArtifactCreate(BaseModel):
     type: str = Field(min_length=1, max_length=120)
@@ -114,6 +125,34 @@ class ArtifactSetCurrent(BaseModel):
     version: int = Field(ge=1)
 
 
+# -------- Artefakt‑Generierung (Block 4) --------
+
+class ArtifactGenerateRequest(BaseModel):
+    """Anforderung zur Generierung mehrerer Artefakte.
+
+    Der Nutzer übergibt eine Liste von internen Typen (z. B. "strukturanalyse",
+    "schutzbedarf", "modellierung", "grundschutz_check", "risikoanalyse",
+    "maßnahmenplan", "sicherheitskonzept"). Für jeden Typ wird ein
+    Dokument erzeugt oder aktualisiert.
+    """
+
+    types: list[str] = Field(..., description="Liste der zu generierenden Artefakt‑Typen")
+
+
+class GeneratedArtifactOut(BaseModel):
+    """Ein generiertes Artefakt mit neuer Version und offenen Punkten."""
+
+    artifact: ArtifactOut
+    version: ArtifactVersionOut
+    open_points: list["OpenPointOut"]  # Vorwärtsreferenz
+
+
+class ArtifactGenerateResponse(BaseModel):
+    """Antwort auf die Generierung mehrerer Artefakte."""
+
+    items: list[GeneratedArtifactOut]
+
+
 # -------- Open Points --------
 
 OPENPOINT_STATUS = {"offen", "in_bearbeitung", "fertig", "archiviert"}
@@ -128,7 +167,7 @@ class OpenPointCreate(BaseModel):
     priority: str = Field(default="wichtig", description="kritisch|wichtig|nice-to-have")
     status: str = Field(default="offen", description="offen|in_bearbeitung|fertig|archiviert")
 
-    # optional references
+    # optionale Referenzen
     artifact_id: str | None = Field(default=None)
     bsi_ref: str | None = Field(default=None, max_length=200)
     section_ref: str | None = Field(default=None, max_length=300)
@@ -149,13 +188,11 @@ class OpenPointUpdate(BaseModel):
 
 
 class OpenPointAnswer(BaseModel):
-    # for input_type=text
+    # für input_type=text
     answer_text: str | None = Field(default=None)
-
-    # for input_type=choice
+    # für input_type=choice
     answer_choice: str | None = Field(default=None)
-
-    # if true -> set status to fertig automatically
+    # wenn true -> Status automatisch auf fertig setzen
     mark_done: bool = Field(default=True)
 
 
@@ -204,7 +241,7 @@ CHAT_ROLE = {"user", "assistant", "system"}
 
 
 class ChatSessionCreate(BaseModel):
-    # optional, for later: you can link chat to project
+    # optional: Chat kann einem Projekt zugeordnet sein
     project_id: str | None = Field(default=None)
     title: str | None = Field(default=None, max_length=200)
 
@@ -236,28 +273,3 @@ class ChatMessageOut(BaseModel):
 
 class ChatMessageListOut(BaseModel):
     items: list[ChatMessageOut]
-
-
-class ChatAttachmentOut(BaseModel):
-    id: str
-    message_id: str
-    filename: str
-    content_type: str
-    size_bytes: int
-    created_at: datetime
-
-
-class ChatMessageDetailOut(ChatMessageOut):
-    attachments: list[ChatAttachmentOut]
-
-
-class ChatStreamIn(BaseModel):
-    content: str = Field(min_length=1, max_length=200000)
-    # optional: override model if needed later
-    model: str | None = Field(default=None)
-
-
-class ChatStreamMetaOut(BaseModel):
-    session_id: str
-    user_message_id: str
-    assistant_message_id: str | None = None

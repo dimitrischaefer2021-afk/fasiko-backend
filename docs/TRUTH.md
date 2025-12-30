@@ -2,10 +2,10 @@ Wahrheitsquelle für FaSiKo‑Backend
 
 Dieses Dokument beschreibt den aktuellen Ist‑Zustand des Backends (Stand Block 01).
 
-Ausgangsarchitektur (nach Block 03)
+Ausgangsarchitektur (nach Block 04)
 	•	Das Backend ist als FastAPI‑Anwendung implementiert (Python 3.11) und läuft im Docker‑Container.
 	•	Es gibt einen Ordner backend/app mit folgenden Modulen:
-	•	main.py: startet die FastAPI‑App und registriert Router für Projekte, Artefakte, offene Punkte, Chat und Health.
+	•	main.py: startet die FastAPI‑App. Seit Block 04 werden alle Router (Health, Projekte, Artefakte, Offene Punkte) unter dem Prefix /api/v1 registriert. Die Chat‑Integration folgt in Block 05.
 	•	settings.py: liest Umgebungsvariablen, z. B. APP_NAME, DATABASE_URL, UPLOAD_DIR, OPENPOINT_DIR und MAX_UPLOAD_BYTES.
 	•	db.py: definiert eine SQLAlchemy‑Engine; aktuell wird standardmäßig SQLite (sqlite:///…) verwendet.
 	•	models.py: enthält SQLAlchemy‑Modelle für Projekte, Quellen, Artefakte, Versionen, offene Punkte, Chat‑Sessions, Chat‑Nachrichten und Anhänge.
@@ -14,10 +14,10 @@ Ausgangsarchitektur (nach Block 03)
 	•	schemas.py: definiert Pydantic‑Schemas für Ein‑ und Ausgaben der API.
 	•	api/: enthält FastAPI‑Router:
 	•	projects.py – CRUD‑Operationen für Projekte und Uploads von Quellen.
-	•	artifacts.py – Erstellung und Verwaltung von Artefakten (Meta‑Daten und Versionen). Es erfolgt noch keine KI‑Erzeugung der Inhalte.
+	•	artifacts.py – Verwaltung von Artefakten, deren Versionen und Generierung. Über einen neuen Endpunkt können Artefakte per LLM erstellt oder aktualisiert werden; offene Fragen werden als offene Punkte gespeichert.
 	•	open_points.py – CRUD für offene Punkte sowie Anhänge und Beantworten von Punkten.
-	•	chat.py – Chat‑Sessions und Nachrichten mit Uploads. Der Chat nutzt Ollama über die Umgebungsvariable OLLAMA_URL und ein Modell (OLLAMA_CHAT_MODEL) für Antworten.
-	•	health.py – einfacher Health‑Check.
+	•	chat.py – Chat‑Sessions und Nachrichten mit Uploads. Der Chat nutzt Ollama über die Umgebungsvariable OLLAMA_URL und ein Modell (OLLAMA_CHAT_MODEL) für Antworten (Überarbeitung folgt in Block 05).
+	•	health.py – Health‑ und (später) Ready‑Endpoints.
 	•	Im Repository liegt eine docker-compose.yml, die vier Dienste startet:
 	•	db: PostgreSQL 16‑alpine mit persistentem Volume (pg_data).
 	•	backend: FastAPI‑Server mit Uvicorn. Dieser Dienst führt beim Start automatisch Alembic‑Migrationen aus und verbindet sich mit der PostgreSQL‑Datenbank.
@@ -27,10 +27,10 @@ Datenpersistenz erfolgt über Volumes: backend_data, pg_data, ollama_data und se
 
 Bekannte Einschränkungen (nach Block 03)
 	•	Die Migration auf PostgreSQL ist implementiert. Für lokale Experimente kann weiterhin SQLite genutzt werden, indem in der .env eine entsprechende DATABASE_URL gesetzt wird.
-	•	Die KI‑Logik zur Generierung von FaSiKo‑Dokumenten aus Quellen und zur Erzeugung offener Punkte fehlt.
-	•	Der Chat‑Endpoint bietet noch keine Websuche; es wird lediglich der LLM über Ollama angesprochen.
-	•	Es gibt keine LLM‑Routing‑Logik für 70B‑/8B‑Modelle und keine Konfiguration per .env.example.
-	•	Es existieren keine Dokumente für offene Punkte‐Kategorien, Bausteine oder Artefakt‑Typen; diese müssen noch definiert werden.
+	•	Die Generierung von FaSiKo‑Artefakten wurde in Block 04 eingeführt, jedoch existiert noch keine LLM‑unterstützte Bearbeitung (Umschreiben, Diff, Versionierung). Diese Funktionen werden in den folgenden Blöcken ergänzt.
+	•	Der Chat‑Endpoint bietet weiterhin keine Websuche; die SearXNG‑Integration folgt in Block 05.
+	•	Eine vollständige LLM‑Routing‑Logik für die Nutzung von 70B‑ und 8B‑Modellen wird erst in Block 06 umgesetzt; aktuell nutzt das System 70B nur für die Generierung.
+	•	Eine verfeinerte Klassifikation von offenen Punkten (z. B. Kategorie, BSI‑Baustein) wird sukzessive ergänzt. Zurzeit werden Kategorien direkt aus dem LLM‑Output übernommen, sofern vorhanden.
 
 Server und Deployment
 	•	Das Projekt wird per docker-compose up gestartet. Die Ports 8000 (Backend) und 11434 (Ollama) werden bereitgestellt.
@@ -119,3 +119,25 @@ Ab Block 03 gibt es zusätzliche Variablen für die PostgreSQL‑Datenbank:
 Wenn in der Umgebung keine DATABASE_URL gesetzt ist, baut das Backend aus diesen Parametern automatisch eine PostgreSQL‑URL im Format postgresql+psycopg2://<USER>:<PASS>@<HOST>:<PORT>/<DB>. Für lokale Tests können Sie alternativ weiterhin eine SQLite‑URL angeben (beispielsweise sqlite:////tmp/fasiko.db).
 
 Diese Datei wird mit jedem Block aktualisiert, um den Stand der Wahrheit zu dokumentieren.
+
+Artefakt‑Generierung (Block 04)
+
+In Block 04 wurde eine erste KI‑Unterstützung implementiert. Über den Endpunkt
+POST /api/v1/projects/{project_id}/artifacts/generate
+
+kann der Nutzer eine oder mehrere Artefakt‑Typen anfordern. Folgende Typen
+werden derzeit unterstützt:
+	•	strukturanalyse
+	•	schutzbedarf
+	•	modellierung
+	•	grundschutz_check
+	•	risikoanalyse
+	•	maßnahmenplan
+	•	sicherheitskonzept
+
+Der Server sendet für jeden Typ einen vordefinierten Prompt an das LLM
+(llama3.1:70b). Fehlen Eingaben, produziert das LLM offene Fragen im
+Format OFFENE_FRAGE: Kategorie; Frage. Diese werden als offene
+Punkte persistiert. Das generierte Dokument wird als neue Version
+gespeichert. Falls das LLM nicht erreichbar ist, liefert der Server
+eine einfache Skelett‑Struktur mit Überschriften.

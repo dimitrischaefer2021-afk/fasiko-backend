@@ -1,1 +1,24 @@
+# Ignoriere System‑ und Cache‑Dateien
+
+# macOS Finder Dateien
 .DS_Store
+
+# Python Bytecode und Cache
+__pycache__/
+*.py[cod]
+
+# Python Packages / Build Artefacts
+*.egg
+*.egg-info/
+dist/
+build/
+
+# IDE‑ und Editor‑Dateien
+.idea/
+.vscode/
+
+# Umgebungsdateien
+.env
+
+# Datenbanken
+*.sqlite3
