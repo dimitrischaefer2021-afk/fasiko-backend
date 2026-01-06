@@ -16,7 +16,7 @@ Ausgangsarchitektur (nach Block 04)
 	•	projects.py – CRUD‑Operationen für Projekte und Uploads von Quellen.
 	•	artifacts.py – Verwaltung von Artefakten, deren Versionen und Generierung. Über einen neuen Endpunkt können Artefakte per LLM erstellt oder aktualisiert werden; offene Fragen werden als offene Punkte gespeichert.
 	•	open_points.py – CRUD für offene Punkte sowie Anhänge und Beantworten von Punkten.
-	•	chat.py – Chat‑Sessions und Nachrichten mit Uploads. Der Chat nutzt Ollama über die Umgebungsvariable OLLAMA_URL und ein Modell (OLLAMA_CHAT_MODEL) für Antworten (Überarbeitung folgt in Block 05).
+	•	chat.py – Chat‑Sessions, Nachrichten, Dateianhänge und ein Assistent mit Websuche. Der Chat nutzt den Ollama‑Server über OLLAMA_URL mit dem Modell llama3.1:8b für Antworten. Seit Block 05 werden Suchergebnisse des selbst gehosteten SearXNG‑Dienstes als Kontext an das LLM übergeben und am Ende als Quellen ausgewiesen.
 	•	health.py – Health‑ und (später) Ready‑Endpoints.
 	•	Im Repository liegt eine docker-compose.yml, die vier Dienste startet:
 	•	db: PostgreSQL 16‑alpine mit persistentem Volume (pg_data).
@@ -39,6 +39,7 @@ Server und Deployment
 Konfiguration über .env
 
 Ab Block 02 gibt es eine Beispiel‑Konfigurationsdatei .env.example im Projekt‑Root. Diese enthält alle wichtigen Umgebungsvariablen, die die Anwendung benötigt. Beim Start werden die Variablen aus einer .env‑Datei oder direkt aus der Umgebung gelesen. Wichtige Parameter:
+
 Variable
 Bedeutung
 Standardwert
@@ -141,3 +142,33 @@ Format OFFENE_FRAGE: Kategorie; Frage. Diese werden als offene
 Punkte persistiert. Das generierte Dokument wird als neue Version
 gespeichert. Falls das LLM nicht erreichbar ist, liefert der Server
 eine einfache Skelett‑Struktur mit Überschriften.
+
+Websuche und Chat (Block 05)
+
+In Block 05 wurde der Chat‑Bereich vollständig implementiert und um eine
+Websuche ergänzt:
+	•	Chat‑Sessions: Nutzer können über POST /api/v1/chat/sessions neue
+Chats erstellen und ihnen optional ein Projekt zuordnen. Sessions
+lassen sich umbenennen, auflisten und löschen.
+	•	Nachrichten und Anhänge: Innerhalb einer Session können
+Nachrichten erstellt, abgerufen und gelöscht werden. Zu jeder
+Nachricht dürfen Dateien hochgeladen werden. Die Dateien werden im
+Dateisystem unterhalb von CHAT_DIR gespeichert und über die
+API heruntergeladen oder gelöscht.
+	•	Assistent mit Websuche: Über POST /api/v1/chat/sessions/{session_id}/assistant
+kann der Nutzer eine Frage stellen. Die Frage wird als
+Benutzer‑Nachricht gespeichert. Anschließend führt das Backend eine
+Websuche über den konfigurierten SearXNG‑Server durch. Die
+Suchergebnisse werden als Systemnachricht an das LLM übergeben. Das
+Modell llama3.1:8b erstellt daraufhin eine Antwort. Am Ende des
+Antworttextes werden Fußnoten im Format [1], [2], … mit den
+zugehörigen URLs angefügt. Die Antwort wird als Assistenten‑Nachricht
+gespeichert und zusammen mit den verwendeten Quellen im API‑Response
+zurückgegeben.
+	•	Quellen: Die API liefert die Liste der gefundenen Quellen
+(Titel, URL, Snippet) zusätzlich zur Assistenten‑Nachricht. Dadurch
+kann der Nutzer nachvollziehen, woher die Informationen stammen.
+
+Durch diese Änderungen verfügt der Chat nun über eine einfache
+Recherche‑Funktion, die verschiedene Suchmaschinen über SearXNG
+aggregiert und die Ergebnisse transparent macht.

@@ -6,6 +6,9 @@ Die Klassen sind eng an die zugrunde liegenden Datenbankmodelle angelehnt und
 ermöglichen eine klare Typisierung sowie Validierung der Eingaben.
 """
 
+# Ermöglicht das Verwenden von Forward References ohne Anführungszeichen.
+from __future__ import annotations
+
 from datetime import datetime
 from pydantic import BaseModel, Field
 
@@ -144,7 +147,9 @@ class GeneratedArtifactOut(BaseModel):
 
     artifact: ArtifactOut
     version: ArtifactVersionOut
-    open_points: list["OpenPointOut"]  # Vorwärtsreferenz
+    # Vorwärtsreferenz als String, damit Pydantic die Klasse auch ohne
+    # from __future__ import annotations finden kann.
+    open_points: list["OpenPointOut"]
 
 
 class ArtifactGenerateResponse(BaseModel):
@@ -167,7 +172,7 @@ class OpenPointCreate(BaseModel):
     priority: str = Field(default="wichtig", description="kritisch|wichtig|nice-to-have")
     status: str = Field(default="offen", description="offen|in_bearbeitung|fertig|archiviert")
 
-    # optionale Referenzen
+    # optional references
     artifact_id: str | None = Field(default=None)
     bsi_ref: str | None = Field(default=None, max_length=200)
     section_ref: str | None = Field(default=None, max_length=300)
@@ -188,11 +193,13 @@ class OpenPointUpdate(BaseModel):
 
 
 class OpenPointAnswer(BaseModel):
-    # für input_type=text
+    # for input_type=text
     answer_text: str | None = Field(default=None)
-    # für input_type=choice
+
+    # for input_type=choice
     answer_choice: str | None = Field(default=None)
-    # wenn true -> Status automatisch auf fertig setzen
+
+    # if true -> set status to fertig automatically
     mark_done: bool = Field(default=True)
 
 
@@ -241,7 +248,7 @@ CHAT_ROLE = {"user", "assistant", "system"}
 
 
 class ChatSessionCreate(BaseModel):
-    # optional: Chat kann einem Projekt zugeordnet sein
+    # optional, for later: you can link chat to project
     project_id: str | None = Field(default=None)
     title: str | None = Field(default=None, max_length=200)
 
@@ -273,3 +280,68 @@ class ChatMessageOut(BaseModel):
 
 class ChatMessageListOut(BaseModel):
     items: list[ChatMessageOut]
+
+
+# -------- Erweiterungen für Chat (Dateianhänge, Assistent) --------
+
+class ChatSessionUpdate(BaseModel):
+    """Aktualisierung einer Chat‑Session.
+
+    Aktuell kann nur der Titel geändert werden. Der Projektbezug bleibt unverändert.
+    """
+
+    title: str | None = Field(default=None, max_length=200)
+
+
+class ChatAttachmentOut(BaseModel):
+    """Darstellung eines Chat‑Dateianhangs."""
+
+    id: str
+    message_id: str
+    filename: str
+    content_type: str
+    size_bytes: int
+    created_at: datetime
+
+
+class ChatMessageDetailOut(BaseModel):
+    """Chat‑Nachricht mit ihren Dateianhängen."""
+
+    id: str
+    session_id: str
+    role: str
+    content: str
+    created_at: datetime
+    attachments: list[ChatAttachmentOut]
+
+
+class ChatAssistantIn(BaseModel):
+    """Eingabe an den Chat‑Assistenten.
+
+    Der Inhalt entspricht der Frage oder dem Prompt des Nutzers.
+    """
+
+    content: str = Field(..., min_length=1, max_length=10000)
+
+
+class WebSearchResult(BaseModel):
+    """Struktur eines Websuchergebnisses aus SearXNG.
+
+    Es werden nur Titel und URL ausgegeben; Snippets werden aus Datenschutzgründen
+    und zur Kürze weggelassen.
+    """
+
+    title: str
+    url: str
+
+
+class ChatAssistantReplyOut(BaseModel):
+    """Antwort des Assistenten inklusive Quellen.
+
+    `message` ist die gespeicherte Assistenten‑Nachricht. `sources` listet die
+    verwendeten Webquellen auf (Titel und URL). Snippets werden aus
+    Datenschutzgründen nicht zurückgegeben.
+    """
+
+    message: ChatMessageOut
+    sources: list[WebSearchResult]

@@ -1,23 +1,45 @@
+"""
+CRUD‑Operationen für das FaSiKo‑Backend.
+
+Dieses Modul enthält Funktionen zum Anlegen, Lesen, Aktualisieren und Löschen
+der verschiedenen Datenbankeinträge (Projekte, Quellen, Artefakte, Versionen,
+Offene Punkte, Anhänge, Chat‑Sessions und Chat‑Nachrichten). Die Funktionen
+arbeiten mit SQLAlchemy‑Sessions und nutzen die in ``models.py`` definierten
+ORM‑Klassen.
+"""
+
 import json
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func
 
 from .models import (
-    Project, SourceDocument,
-    Artifact, ArtifactVersion,
-    OpenPoint, OpenPointAttachment,
-    ChatSession, ChatMessage, ChatAttachment,
+    Project,
+    SourceDocument,
+    Artifact,
+    ArtifactVersion,
+    OpenPoint,
+    OpenPointAttachment,
+    ChatSession,
+    ChatMessage,
+    ChatAttachment,
 )
 from .schemas import (
-    ProjectCreate, ProjectUpdate,
-    ArtifactCreate, ArtifactUpdate, ArtifactVersionCreate,
-    OpenPointCreate, OpenPointUpdate, OpenPointAnswer,
-    ChatSessionCreate, ChatMessageCreate,
+    ProjectCreate,
+    ProjectUpdate,
+    ArtifactCreate,
+    ArtifactUpdate,
+    ArtifactVersionCreate,
+    OpenPointCreate,
+    OpenPointUpdate,
+    OpenPointAnswer,
+    ChatSessionCreate,
+    ChatMessageCreate,
 )
 from .storage import tags_to_json
 
 
 # ---------- Projects ----------
+
 
 def create_project(db: Session, payload: ProjectCreate) -> Project:
     project = Project(name=payload.name, description=payload.description)
@@ -60,6 +82,7 @@ def delete_project(db: Session, project_id: str) -> bool:
 
 
 # ---------- Sources ----------
+
 
 def create_source_record(
     db: Session,
@@ -150,7 +173,6 @@ def replace_source(
     db.add(new)
     db.commit()
     db.refresh(new)
-
     return old, new
 
 
@@ -166,6 +188,7 @@ def source_tags(src: SourceDocument) -> list[str]:
 
 # ---------- Artifacts + Versioning ----------
 
+
 def create_artifact(db: Session, project_id: str, payload: ArtifactCreate) -> Artifact:
     art = Artifact(
         project_id=project_id,
@@ -177,7 +200,7 @@ def create_artifact(db: Session, project_id: str, payload: ArtifactCreate) -> Ar
     db.add(art)
     db.commit()
     db.refresh(art)
-
+    # Erzeuge die erste Version
     v1 = ArtifactVersion(
         artifact_id=art.id,
         version=1,
@@ -221,18 +244,52 @@ def get_current_version(db: Session, artifact_id: str, current_version: int) -> 
     return db.execute(stmt).scalars().first()
 
 
-def update_artifact_meta(db: Session, project_id: str, artifact_id: str, payload: ArtifactUpdate) -> Artifact | None:
-    art = get_artifact(db, project_id, artifact_id)
+def get_version(db: Session, artifact_id: str, version: int) -> ArtifactVersion | None:
+    stmt = (
+        select(ArtifactVersion)
+        .where(ArtifactVersion.artifact_id == artifact_id)
+        .where(ArtifactVersion.version == version)
+    )
+    return db.execute(stmt).scalars().first()
+
+
+def list_versions(db: Session, artifact_id: str) -> list[ArtifactVersion]:
+    stmt = select(ArtifactVersion).where(ArtifactVersion.artifact_id == artifact_id).order_by(ArtifactVersion.version.desc())
+    return list(db.execute(stmt).scalars().all())
+
+
+def create_version(db: Session, artifact_id: str, payload: ArtifactVersionCreate) -> ArtifactVersion:
+    art = db.get(Artifact, artifact_id)
     if art is None:
-        return None
-    if payload.title is not None:
-        art.title = payload.title.strip()
-    if payload.status is not None:
-        art.status = payload.status.strip()
+        raise ValueError("Artifact not found")
+    next_version = count_versions(db, artifact_id) + 1
+    v = ArtifactVersion(
+        artifact_id=artifact_id,
+        version=next_version,
+        content_md=payload.content_md or "",
+    )
+    db.add(v)
+    db.commit()
+    if payload.make_current:
+        art.current_version = v.version
+        db.add(art)
+        db.commit()
+    db.refresh(v)
+    return v
+
+
+def set_current_version(db: Session, artifact_id: str, version: int) -> bool:
+    art = db.get(Artifact, artifact_id)
+    if art is None:
+        return False
+    # Überprüfe, ob Version existiert
+    v = get_version(db, artifact_id, version)
+    if v is None:
+        return False
+    art.current_version = version
     db.add(art)
     db.commit()
-    db.refresh(art)
-    return art
+    return True
 
 
 def delete_artifact(db: Session, project_id: str, artifact_id: str) -> bool:
@@ -244,62 +301,8 @@ def delete_artifact(db: Session, project_id: str, artifact_id: str) -> bool:
     return True
 
 
-def list_versions(db: Session, artifact_id: str) -> list[ArtifactVersion]:
-    stmt = (
-        select(ArtifactVersion)
-        .where(ArtifactVersion.artifact_id == artifact_id)
-        .order_by(ArtifactVersion.version.desc())
-    )
-    return list(db.execute(stmt).scalars().all())
-
-
-def get_version(db: Session, artifact_id: str, version: int) -> ArtifactVersion | None:
-    stmt = (
-        select(ArtifactVersion)
-        .where(ArtifactVersion.artifact_id == artifact_id)
-        .where(ArtifactVersion.version == version)
-    )
-    return db.execute(stmt).scalars().first()
-
-
-def create_version(db: Session, artifact_id: str, payload: ArtifactVersionCreate) -> ArtifactVersion:
-    stmt = select(func.max(ArtifactVersion.version)).where(ArtifactVersion.artifact_id == artifact_id)
-    max_v = db.execute(stmt).scalar_one()
-    next_v = int(max_v or 0) + 1
-
-    ver = ArtifactVersion(
-        artifact_id=artifact_id,
-        version=next_v,
-        content_md=payload.content_md or "",
-    )
-    db.add(ver)
-    db.commit()
-    db.refresh(ver)
-
-    if payload.make_current:
-        art = db.get(Artifact, artifact_id)
-        if art is not None:
-            art.current_version = next_v
-            db.add(art)
-            db.commit()
-
-    return ver
-
-
-def set_current_version(db: Session, artifact_id: str, version: int) -> bool:
-    v = get_version(db, artifact_id, version)
-    if v is None:
-        return False
-    art = db.get(Artifact, artifact_id)
-    if art is None:
-        return False
-    art.current_version = version
-    db.add(art)
-    db.commit()
-    return True
-
-
 # ---------- Open Points ----------
+
 
 def create_open_point(db: Session, project_id: str, payload: OpenPointCreate) -> OpenPoint:
     op = OpenPoint(
@@ -309,9 +312,9 @@ def create_open_point(db: Session, project_id: str, payload: OpenPointCreate) ->
         section_ref=payload.section_ref,
         category=payload.category,
         question=payload.question.strip(),
-        input_type=(payload.input_type or "text").strip(),
-        status=(payload.status or "offen").strip(),
-        priority=(payload.priority or "wichtig").strip(),
+        input_type=payload.input_type.strip(),
+        status=payload.status.strip() if payload.status else "offen",
+        priority=payload.priority.strip() if payload.priority else "wichtig",
     )
     db.add(op)
     db.commit()
@@ -319,21 +322,12 @@ def create_open_point(db: Session, project_id: str, payload: OpenPointCreate) ->
     return op
 
 
-def list_open_points(
-    db: Session,
-    project_id: str,
-    status: str | None = None,
-    priority: str | None = None,
-    artifact_id: str | None = None,
-) -> list[OpenPoint]:
-    stmt = select(OpenPoint).where(OpenPoint.project_id == project_id)
-    if status:
-        stmt = stmt.where(OpenPoint.status == status)
-    if priority:
-        stmt = stmt.where(OpenPoint.priority == priority)
-    if artifact_id:
-        stmt = stmt.where(OpenPoint.artifact_id == artifact_id)
-    stmt = stmt.order_by(OpenPoint.updated_at.desc())
+def list_open_points(db: Session, project_id: str) -> list[OpenPoint]:
+    stmt = (
+        select(OpenPoint)
+        .where(OpenPoint.project_id == project_id)
+        .order_by(OpenPoint.created_at.asc())
+    )
     return list(db.execute(stmt).scalars().all())
 
 
@@ -350,17 +344,14 @@ def update_open_point(db: Session, project_id: str, open_point_id: str, payload:
     op = get_open_point(db, project_id, open_point_id)
     if op is None:
         return None
-
     if payload.priority is not None:
-        op.priority = payload.priority.strip()
+        op.priority = payload.priority
     if payload.status is not None:
-        op.status = payload.status.strip()
-
+        op.status = payload.status
     if payload.question is not None:
-        op.question = payload.question.strip()
+        op.question = payload.question
     if payload.input_type is not None:
-        op.input_type = payload.input_type.strip()
-
+        op.input_type = payload.input_type
     if payload.artifact_id is not None:
         op.artifact_id = payload.artifact_id
     if payload.bsi_ref is not None:
@@ -369,7 +360,23 @@ def update_open_point(db: Session, project_id: str, open_point_id: str, payload:
         op.section_ref = payload.section_ref
     if payload.category is not None:
         op.category = payload.category
+    db.add(op)
+    db.commit()
+    db.refresh(op)
+    return op
 
+
+def answer_open_point(db: Session, project_id: str, open_point_id: str, payload: OpenPointAnswer) -> OpenPoint | None:
+    op = get_open_point(db, project_id, open_point_id)
+    if op is None:
+        return None
+    if payload.answer_text is not None:
+        op.answer_text = payload.answer_text
+    if payload.answer_choice is not None:
+        op.answer_choice = payload.answer_choice
+    # optional: set to fertig
+    if payload.mark_done:
+        op.status = "fertig"
     db.add(op)
     db.commit()
     db.refresh(op)
@@ -385,50 +392,57 @@ def delete_open_point(db: Session, project_id: str, open_point_id: str) -> bool:
     return True
 
 
+def list_open_points(
+    db: Session,
+    project_id: str,
+    status: str | None = None,
+    priority: str | None = None,
+    artifact_id: str | None = None,
+) -> list[OpenPoint]:
+    """Liste der offenen Punkte nach optionalen Filtern."""
+    stmt = select(OpenPoint).where(OpenPoint.project_id == project_id)
+    if status:
+        stmt = stmt.where(OpenPoint.status == status)
+    if priority:
+        stmt = stmt.where(OpenPoint.priority == priority)
+    if artifact_id:
+        stmt = stmt.where(OpenPoint.artifact_id == artifact_id)
+    stmt = stmt.order_by(OpenPoint.created_at.asc())
+    return list(db.execute(stmt).scalars().all())
+
+
+def list_openpoint_attachments(db: Session, open_point_id: str) -> list[OpenPointAttachment]:
+    stmt = (
+        select(OpenPointAttachment)
+        .where(OpenPointAttachment.open_point_id == open_point_id)
+        .order_by(OpenPointAttachment.created_at.desc())
+    )
+    return list(db.execute(stmt).scalars().all())
+
+
 def count_openpoint_attachments(db: Session, open_point_id: str) -> int:
-    stmt = select(func.count()).select_from(OpenPointAttachment).where(OpenPointAttachment.open_point_id == open_point_id)
+    stmt = (
+        select(func.count())
+        .select_from(OpenPointAttachment)
+        .where(OpenPointAttachment.open_point_id == open_point_id)
+    )
     return int(db.execute(stmt).scalar_one())
 
 
-def answer_open_point(db: Session, project_id: str, open_point_id: str, payload: OpenPointAnswer) -> OpenPoint | None:
-    op = get_open_point(db, project_id, open_point_id)
-    if op is None:
-        return None
-
-    # Keep data clean:
-    # - for text: set answer_text, clear answer_choice
-    # - for choice: set answer_choice, clear answer_text
-    # - for file: answers via attachments, do not touch text/choice fields
-    if op.input_type == "text":
-        if payload.answer_text is not None:
-            op.answer_text = payload.answer_text
-        op.answer_choice = None
-    elif op.input_type == "choice":
-        if payload.answer_choice is not None:
-            op.answer_choice = payload.answer_choice
-        op.answer_text = None
-    else:
-        # file: no changes here
-        pass
-
-    if payload.mark_done:
-        op.status = "fertig"
-
-    db.add(op)
-    db.commit()
-    db.refresh(op)
-    return op
+# ---------- Open Point Attachments ----------
 
 
-def create_openpoint_attachment(
+def create_open_point_attachment(
     db: Session,
     open_point_id: str,
+    attachment_id: str,
     filename: str,
     content_type: str,
     size_bytes: int,
     storage_path: str,
 ) -> OpenPointAttachment:
     att = OpenPointAttachment(
+        id=attachment_id,
         open_point_id=open_point_id,
         filename=filename,
         content_type=content_type,
@@ -441,7 +455,7 @@ def create_openpoint_attachment(
     return att
 
 
-def list_openpoint_attachments(db: Session, open_point_id: str) -> list[OpenPointAttachment]:
+def list_open_point_attachments(db: Session, open_point_id: str) -> list[OpenPointAttachment]:
     stmt = (
         select(OpenPointAttachment)
         .where(OpenPointAttachment.open_point_id == open_point_id)
@@ -450,16 +464,24 @@ def list_openpoint_attachments(db: Session, open_point_id: str) -> list[OpenPoin
     return list(db.execute(stmt).scalars().all())
 
 
-def get_openpoint_attachment(db: Session, open_point_id: str, attachment_id: str) -> OpenPointAttachment | None:
-    att = db.get(OpenPointAttachment, attachment_id)
+def get_open_point_attachment(db: Session, attachment_id: str) -> OpenPointAttachment | None:
+    return db.get(OpenPointAttachment, attachment_id)
+
+
+def delete_open_point_attachment(db: Session, project_id: str, open_point_id: str, attachment_id: str) -> bool:
+    att = get_open_point_attachment(db, attachment_id)
     if att is None:
-        return None
+        return False
+    # sicherstellen, dass attachment zum richtigen open_point gehört
     if att.open_point_id != open_point_id:
-        return None
-    return att
+        return False
+    db.delete(att)
+    db.commit()
+    return True
 
 
-# ---------- Chat (Block 5) ----------
+# ---------- Chat Sessions ----------
+
 
 def create_chat_session(db: Session, payload: ChatSessionCreate) -> ChatSession:
     sess = ChatSession(project_id=payload.project_id, title=payload.title)
@@ -469,16 +491,25 @@ def create_chat_session(db: Session, payload: ChatSessionCreate) -> ChatSession:
     return sess
 
 
-def list_chat_sessions(db: Session, limit: int = 100, offset: int = 0) -> list[ChatSession]:
-    stmt = select(ChatSession).order_by(ChatSession.updated_at.desc()).limit(limit).offset(offset)
+def list_chat_sessions(db: Session, project_id: str | None) -> list[ChatSession]:
+    stmt = select(ChatSession)
+    if project_id:
+        stmt = stmt.where(ChatSession.project_id == project_id)
+    stmt = stmt.order_by(ChatSession.created_at.desc())
     return list(db.execute(stmt).scalars().all())
 
 
 def get_chat_session(db: Session, session_id: str) -> ChatSession | None:
     return db.get(ChatSession, session_id)
 
+# ---------- Delete Chat Session ----------
 
 def delete_chat_session(db: Session, session_id: str) -> bool:
+    """Löscht eine Chat‑Session und alle zugehörigen Nachrichten und Anhänge.
+
+    Aufgrund der in models.py gesetzten cascade‑Optionen werden die zugehörigen
+    ChatMessages und ChatAttachments automatisch entfernt.
+    """
     sess = db.get(ChatSession, session_id)
     if sess is None:
         return False
@@ -487,34 +518,67 @@ def delete_chat_session(db: Session, session_id: str) -> bool:
     return True
 
 
+# ---------- Chat Messages ----------
+
+
 def create_chat_message(db: Session, session_id: str, payload: ChatMessageCreate) -> ChatMessage:
-    msg = ChatMessage(session_id=session_id, role=payload.role, content=payload.content or "")
+    # Sicherheit: nur bestimmte Rollen erlauben
+    if payload.role not in {"user", "assistant", "system"}:
+        raise ValueError("Invalid role")
+    msg = ChatMessage(
+        session_id=session_id,
+        role=payload.role,
+        content=payload.content,
+    )
     db.add(msg)
     db.commit()
     db.refresh(msg)
     return msg
 
 
-def list_chat_messages(db: Session, session_id: str, limit: int = 200, offset: int = 0) -> list[ChatMessage]:
+def list_chat_messages(db: Session, session_id: str) -> list[ChatMessage]:
     stmt = (
         select(ChatMessage)
         .where(ChatMessage.session_id == session_id)
         .order_by(ChatMessage.created_at.asc())
-        .limit(limit)
-        .offset(offset)
     )
     return list(db.execute(stmt).scalars().all())
+
+
+def get_chat_message(db: Session, msg_id: str) -> ChatMessage | None:
+    return db.get(ChatMessage, msg_id)
+
+# ---------- Delete Chat Message ----------
+
+def delete_chat_message(db: Session, session_id: str, message_id: str) -> bool:
+    """Löscht eine Nachricht aus einer Chat‑Session.
+
+    Die Anhänge der Nachricht werden automatisch gelöscht (cascade).
+    """
+    msg = db.get(ChatMessage, message_id)
+    if msg is None:
+        return False
+    if msg.session_id != session_id:
+        return False
+    db.delete(msg)
+    db.commit()
+    return True
+
+
+# ---------- Chat Attachments ----------
 
 
 def create_chat_attachment(
     db: Session,
     message_id: str,
+    attachment_id: str,
     filename: str,
     content_type: str,
     size_bytes: int,
     storage_path: str,
 ) -> ChatAttachment:
     att = ChatAttachment(
+        id=attachment_id,
         message_id=message_id,
         filename=filename,
         content_type=content_type,
@@ -534,3 +598,18 @@ def list_chat_attachments(db: Session, message_id: str) -> list[ChatAttachment]:
         .order_by(ChatAttachment.created_at.desc())
     )
     return list(db.execute(stmt).scalars().all())
+
+
+def get_chat_attachment(db: Session, attachment_id: str) -> ChatAttachment | None:
+    return db.get(ChatAttachment, attachment_id)
+
+
+def delete_chat_attachment(db: Session, message_id: str, attachment_id: str) -> bool:
+    att = get_chat_attachment(db, attachment_id)
+    if att is None:
+        return False
+    if att.message_id != message_id:
+        return False
+    db.delete(att)
+    db.commit()
+    return True
