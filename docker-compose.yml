@@ -73,11 +73,12 @@ services:
     image: searxng/searxng:latest
     container_name: fasiko-searxng
     environment:
-      BASE_URL: ${SEARXNG_URL:-http://searxng:8080}
+      SEARXNG_BASE_URL: ${SEARXNG_URL:-http://searxng:8080}
     ports:
       - "8080:8080"
     volumes:
-      - searxng_data:/etc/searxng
+      - ./searxng/settings.yml:/etc/searxng/settings.yml
+      - searxng_data:/var/cache/searxng
     restart: unless-stopped
 
 volumes:

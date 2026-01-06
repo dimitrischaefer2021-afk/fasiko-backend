@@ -1,0 +1,18 @@
+# searxng/settings.yml – einfache, aber funktionsfähige Konfiguration
+use_default_settings: true
+
+server:
+  secret_key: "CHANGE_ME_RANDOM"
+
+search:
+  formats:
+    - html
+    - json
+  suspended_times:
+    SearxEngineCaptcha: 0
+    SearxEngineAccessDenied: 0
+
+engines:
+  - name: duckduckgo
+    disabled: true
+  # alle anderen Engines bleiben aktiv (Default)
