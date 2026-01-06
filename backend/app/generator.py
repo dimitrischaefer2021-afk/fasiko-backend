@@ -1,25 +1,30 @@
 """
-Generator‑Modul für FaSiKo‑Artefakte.
+    Generator‑Modul für FaSiKo‑Artefakte.
 
-Dieses Modul kapselt die Logik zur Erstellung von ersten
-FaSiKo‑Dokumenten mithilfe eines LLM über den Ollama‑Server.
-Für jeden Artefakt‑Typ wird ein eigener Prompt definiert. Fehlen
-Informationen in den vorhandenen Quellen, soll das LLM konkrete
-Fragen stellen. Diese Fragen werden als offene Punkte erkannt und
-in der Datenbank gespeichert.
+    Dieses Modul kapselt die Logik zur Erstellung von ersten
+    FaSiKo‑Dokumenten mithilfe eines LLM über den Ollama‑Server.
+    Für jeden Artefakt‑Typ wird ein eigener Prompt definiert. Fehlen
+    Informationen in den vorhandenen Quellen, soll das LLM konkrete
+    Fragen stellen. Diese Fragen werden als offene Punkte erkannt und
+    in der Datenbank gespeichert.
 
-Die LLM‑Anbindung erfolgt über das HTTP‑Interface von Ollama
-(`/api/chat`). Falls Ollama nicht erreichbar ist oder das Modell
-nicht zur Verfügung steht, wird ein statischer Skelett‑Text
-zurückgegeben, der die erwartete Struktur des Dokuments zeigt.
-"""
+    Die LLM‑Anbindung erfolgt über das HTTP‑Interface von Ollama
+    (`/api/chat`). Wenn das 70B‑Modell nicht erreichbar ist, wird in
+    Entwicklungsumgebungen automatisch auf das 8B‑Modell zurückgefallen.
+    In Produktionsumgebungen wird ein statisches Skelett genutzt.
+    """
 
 from __future__ import annotations
 
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple
 import httpx
 
-from .settings import OLLAMA_URL, MODEL_FASIKO_CREATE_70B
+from .settings import (
+    OLLAMA_URL,
+    MODEL_FASIKO_CREATE_70B,
+    MODEL_GENERAL_8B,
+    ENV_PROFILE,
+)
 
 # Prompt‑Vorlagen für alle Artefakt‑Typen
 PROMPT_TEMPLATES: Dict[str, str] = {
@@ -27,8 +32,8 @@ PROMPT_TEMPLATES: Dict[str, str] = {
         "Erstelle eine Strukturanalyse für das IT‑Grundschutz‑Sicherheitskonzept. "
         "Nutze vorhandene Dokumente soweit möglich. Jede fehlende Information "
         "soll als offene Frage im Format 'OFFENE_FRAGE: Kategorie; Frage' "
-        "aufgeführt werden. Der restliche Inhalt soll klar strukturiert in Markdown "
-        "dargestellt werden."
+        "aufgeführt werden. Der restliche Inhalt soll klar strukturiert in "
+        "Markdown dargestellt werden."
     ),
     "schutzbedarf": (
         "Führe eine Schutzbedarfsfeststellung gemäß IT‑Grundschutz durch. "
@@ -75,7 +80,9 @@ DEFAULT_TEMPLATES: Dict[str, str] = {
     "sicherheitskonzept": "# Sicherheitskonzept\n\nFasse hier alle Ergebnisse in einem konsistenten Sicherheitskonzept zusammen.\n",
 }
 
+
 async def _call_ollama_chat(messages: List[dict], model: str) -> str:
+    """Sendet die Nachrichten an Ollama und liefert den Antworttext."""
     url = f"{OLLAMA_URL}/api/chat"
     payload = {"model": model, "messages": messages, "stream": False}
     async with httpx.AsyncClient() as client:
@@ -85,12 +92,14 @@ async def _call_ollama_chat(messages: List[dict], model: str) -> str:
         message = data.get("message") or {}
         return message.get("content") or ""
 
+
 def _build_prompt(artifact_type: str, project_name: str) -> str:
     base = PROMPT_TEMPLATES.get(artifact_type, "")
     return (
         f"Du bist ein Assistent, der bei der Erstellung von IT‑Grundschutz‑"
         f"Dokumenten hilft. Projektname: {project_name}. {base}"
     )
+
 
 async def generate_artifact_content(
     artifact_type: str, project_name: str
@@ -100,11 +109,20 @@ async def generate_artifact_content(
     """
     prompt = _build_prompt(artifact_type, project_name)
     messages = [{"role": "user", "content": prompt}]
+    content: str
+    # Primär das 70B‑Modell verwenden
     try:
         content = await _call_ollama_chat(messages, MODEL_FASIKO_CREATE_70B)
     except Exception:
-        # Fallback auf statische Vorlage
-        content = DEFAULT_TEMPLATES.get(artifact_type, "")
+        # Fallback-Strategie: In Entwicklung (ENV_PROFILE != "prod") auf 8B‑Modell wechseln
+        if ENV_PROFILE != "prod":
+            try:
+                content = await _call_ollama_chat(messages, MODEL_GENERAL_8B)
+            except Exception:
+                content = DEFAULT_TEMPLATES.get(artifact_type, "")
+        else:
+            # In Produktion direkt auf statisches Skelett zurückfallen
+            content = DEFAULT_TEMPLATES.get(artifact_type, "")
 
     open_points: List[dict] = []
     lines: List[str] = []

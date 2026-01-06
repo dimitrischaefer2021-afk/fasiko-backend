@@ -44,3 +44,60 @@ Block 05 – Websuche & Chat‑Erweiterung
 	•	main.py aktualisiert: Der neue Chat‑Router wird nun unter /api/v1/chat/sessions registriert.
 	•	TRUTH.md aktualisiert: Ein neuer Abschnitt „Websuche und Chat (Block 05)“ wurde ergänzt. Außerdem wurde die Beschreibung des Moduls api/chat.py angepasst, um die integrierte Websuche und das LLM‐Modell zu erwähnen.
 	•	Sonstiges: Die .env.example bleibt unverändert, da CHAT_DIR bereits enthalten war. Die Docker‑Konfiguration musste nicht angepasst werden, da der SearXNG‑Dienst bereits in Block 03 eingerichtet wurde.
+
+	## Block 06 – Ready-Endpoint & LLM-Routing
+
+### Neue Funktionen
+
+- Neuer Router:
+  - `backend/app/api/ready.py`
+- Neuer Endpunkt:
+  - `GET /api/v1/ready`
+
+### Ready-Checks
+
+Der Ready-Endpoint prüft:
+
+- `database`
+  - Verbindungstest via `SELECT 1`
+- `llm_llama3.1:8b`
+  - POST `/api/chat` gegen Ollama
+- `llm_llama3.1:70b`
+  - POST `/api/chat` gegen Ollama
+- `searxng`
+  - HTTP-GET auf SearXNG-Service
+
+Antwortformat:
+```json
+{
+  "components": [
+    { "name": "...", "status": "ok|error", "message": "optional" }
+  ]
+}
+LLM-Routing (Generator)
+	•	Definition:
+	•	Erstellung = erstmalige Generierung eines Artefakts
+	•	Bearbeitung = jede Änderung danach
+	•	Routing-Regeln:
+	•	Erstellung → llama3.1:70b
+	•	Bearbeitung & Chat → llama3.1:8b
+	•	Fallback-Verhalten:
+	•	DEV (ENV_PROFILE != prod)
+	•	70B nicht verfügbar → automatischer Fallback auf 8B
+	•	PROD
+	•	70B nicht verfügbar → statisches Template + Fehlerstatus im Ready-Check
+	•	Keine stillen Abweichungen
+
+Anpassungen an bestehenden Dateien
+	•	backend/app/schemas.py
+	•	Neue Modelle: ReadyComponent, ReadyOut
+	•	backend/app/main.py
+	•	Registrierung des Ready-Routers unter /api/v1
+	•	docs/TRUTH.md
+	•	Aktualisierung des Architektur- und Ready-Abschnitts
+
+Ergebnis Block 06
+	•	System meldet klaren Betriebszustand
+	•	70B-Modell kann lokal fehlschlagen (Hardware-bedingt)
+	•	Verhalten ist transparent, reproduzierbar und produktionsfähig
+	•	Voraussetzung für Jobs, Exporte und Versionierung geschaffen
