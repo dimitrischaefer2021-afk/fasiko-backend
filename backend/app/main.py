@@ -23,6 +23,7 @@ from .api.open_points import router as open_points_router
 from .api.chat import router as chat_router
 from .api.ready import router as ready_router
 from .api.jobs import router as jobs_router  # Neu: Jobs‑Router
+from .api.export import router as export_router  # Neu: Export‑Router
 
 
 @asynccontextmanager
@@ -51,3 +52,4 @@ app.include_router(open_points_router, prefix="/api/v1")
 app.include_router(chat_router, prefix="/api/v1")
 app.include_router(ready_router, prefix="/api/v1")
 app.include_router(jobs_router, prefix="/api/v1")  # Registrierung des Jobs‑Routers
+app.include_router(export_router, prefix="/api/v1")  # Registrierung des Export‑Routers

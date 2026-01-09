@@ -56,3 +56,15 @@ Block 07 – Job‑Service und Export
 •   Erweiterungen in backend/app/api/__init__.py: Der neue jobs_router wird beim Erstellen des API‑Routers automatisch hinzugefügt.
 •   Ergänzung in backend/app/schemas.py: Import von datetime und Definition der neuen Job‑Modelle. Das __all__‑Tuple wurde angepasst.
 •   Erweiterungen in docs/TRUTH.md: Neuer Abschnitt „Jobs und Export (Block 07)“ beschreibt den Zweck des Job‑Services, die API‑Endpunkte und das Export‑Verfahren.
+
+Block 08 – Export‑Download
+•   Neues Modul: backend/app/api/export.py implementiert einen Router
+für den Download von Export‑Jobs. Der Endpunkt GET /api/v1/exports/{job_id}
+liefert die ZIP‑Datei eines abgeschlossenen Export‑Jobs, sofern
+der Job den Status completed besitzt und eine Datei vorhanden ist.
+•   backend/app/main.py aktualisiert: Der Export‑Router wird neben
+den bestehenden Routern (Health, Projects, Artifacts, Open Points,
+Chat, Ready, Jobs) unter /api/v1 registriert.
+•   docs/TRUTH.md erweitert: Ein neuer Abschnitt „Download von
+Exporten (Block 08)“ beschreibt den Download‑Endpunkt und dessen
+Nutzung.

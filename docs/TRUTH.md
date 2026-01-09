@@ -76,3 +76,20 @@ zusätzliche Formate (DOCX, PDF) unterstützt werden. Das
 Export‑Verzeichnis wird über die Umgebungsvariable EXPORT_DIR
 definiert (Standard: /data/exports). Diese Variable wurde in
 settings.py ergänzt.
+
+Download von Exporten (Block 08)
+In Block 08 wurde der Export‑Service um einen Download‑Endpunkt
+erweitert. Ein neuer Router backend/app/api/export.py stellt
+den Pfad GET /api/v1/exports/{job_id} bereit. Dieser Endpunkt
+liefert die ZIP‑Datei eines abgeschlossenen Export‑Jobs, sofern
+der Job im Jobs‑Store den Status completed besitzt und das
+resultierende Archiv existiert. Damit können Nutzer das Ergebnis
+eines Exports herunterladen, nachdem sie den Job‑Status über
+GET /api/v1/jobs/{job_id} auf completed geprüft haben.
+Der Export‑Mechanismus selbst bleibt unverändert (Platzhalter‑Text
+pro Artefakt); nur die Abrufmöglichkeit wurde hinzugefügt. Der
+Download‑Endpunkt prüft Pfad und Existenz der Datei im durch
+EXPORT_DIR konfigurierten Verzeichnis und gibt sie als
+FileResponse zurück. Dieses Feature erweitert den
+Job‑Service, ohne die bestehenden Block 07‑Funktionen zu
+beeinflussen.
