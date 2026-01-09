@@ -68,3 +68,11 @@ Chat, Ready, Jobs) unter /api/v1 registriert.
 •   docs/TRUTH.md erweitert: Ein neuer Abschnitt „Download von
 Exporten (Block 08)“ beschreibt den Download‑Endpunkt und dessen
 Nutzung.
+
+Block 09 – Export als DOCX/PDF
+    • Neue Dependencies: python-docx und reportlab in backend/requirements.txt.
+    • Neues Modul: backend/app/exporter.py exportiert Artefakte aus der DB in txt/md/docx/pdf
+      und packt sie in ein ZIP-Archiv (Zip-Slip safe).
+    • jobs.py erweitert: Export-Job nutzt exporter.py und schreibt result_file={job_id}.zip.
+    • export.py vereinheitlicht: GET /api/v1/exports/{job_id} liefert ZIP des completed Jobs.
+    • main.py erweitert: Registriert jobs_router und export_router zusätzlich zu bestehenden Routern.

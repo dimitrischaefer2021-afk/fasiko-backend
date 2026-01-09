@@ -9,3 +9,7 @@ python-multipart==0.0.20
 # Additional dependencies for PostgreSQL and migrations
 psycopg2-binary==2.9.9
 alembic==1.12.1
+
+# Block 09: Export DOCX/PDF
+python-docx==1.1.2
+reportlab==4.2.2

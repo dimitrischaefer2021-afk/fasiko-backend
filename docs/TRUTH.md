@@ -93,3 +93,22 @@ EXPORT_DIR konfigurierten Verzeichnis und gibt sie als
 FileResponse zurück. Dieses Feature erweitert den
 Job‑Service, ohne die bestehenden Block 07‑Funktionen zu
 beeinflussen.
+
+Export DOCX/PDF (Block 09)
+    In Block 09 wurde der Export-Job erweitert, sodass Artefakte nicht nur als TXT/MD,
+    sondern auch als DOCX und PDF exportiert werden können. Der Export nutzt die
+    aktuellen Artefakt-Versionen aus der Datenbank (Artifact.current_version) und
+    erzeugt pro Artefakt eine Datei im gewünschten Format. Alle Dateien werden
+    in ein ZIP-Archiv gepackt (Zip-Slip geschützt über Basenames) und unter EXPORT_DIR
+    gespeichert.
+
+    Unterstützte Formate:
+        - txt
+        - md
+        - docx
+        - pdf
+
+    Endpunkte:
+        - POST /api/v1/jobs (type=export, artifact_ids, format)
+        - GET  /api/v1/jobs/{job_id}
+        - GET  /api/v1/exports/{job_id}  (Download ZIP)
