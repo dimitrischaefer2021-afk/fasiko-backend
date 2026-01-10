@@ -314,10 +314,12 @@ class ChatAssistantReplyOut(BaseModel):
 class JobCreate(BaseModel):
     """Anforderung zur Erstellung eines Jobs.
 
-    Derzeit wird nur der Typ ``export`` unterstützt. Es müssen
-    die ``artifact_ids`` angegeben werden, also eine Liste der
-    zu exportierenden Artefakt‑IDs. Optional kann ein
-    ``format`` angegeben werden (Standard: ``txt``).
+    Unterstützt wird derzeit nur der Job‑Typ ``export``. Für einen Export
+    müssen die ``artifact_ids`` angegeben werden, also eine Liste der
+    zu exportierenden Artefakt‑IDs. Optional kann ein ``format``
+    angegeben werden, um das Zielformat festzulegen. Erlaubte Werte
+    sind ``txt`` (Standard), ``docx`` oder ``pdf``. Andere Werte
+    führen zu einer Fehlermeldung.
     """
 
     type: str = Field(
@@ -332,8 +334,8 @@ class JobCreate(BaseModel):
     )
     format: Optional[str] = Field(
         default="txt",
-        description="Zielformat der exportierten Dateien (txt, md, etc.)",
-        example="txt",
+        description="Zielformat der exportierten Dateien (txt, docx, pdf)",
+        example="docx",
     )
 
 
@@ -370,6 +372,58 @@ class JobOut(BaseModel):
     progress: float
     result_file: Optional[str]
     error: Optional[str]
+
+# -------- BSI‑Bausteine (Block 11) --------
+
+class BsiGenerateRequest(BaseModel):
+    """Anforderung zur Generierung von BSI‑Baustein‑Bewertungen.
+
+    Die Liste ``modules`` enthält die Codes der Bausteine (z. B. "SYS.2.1"
+    oder "APP.1.2"), für die eine Bewertung erstellt werden soll.
+    """
+    modules: List[str] = Field(
+        ..., description="Liste der BSI‑Baustein‑Codes für die Generierung",
+        example=["SYS.2.1", "APP.1.2"],
+    )
+
+
+class BsiEvaluationOut(BaseModel):
+    """Ausgabeformat für eine einzelne BSI‑Baustein‑Bewertung."""
+    module_code: str = Field(
+        ..., description="Code des BSI‑Bausteins (z. B. 'SYS.2.1')"
+    )
+    status: str = Field(
+        ..., description="Bewertungsstatus (offen|teilweise|erfüllt)"
+    )
+    comment: str | None = Field(
+        default=None,
+        description="Optionale Bemerkung oder Begründung zur Bewertung",
+    )
+    open_points: List[str] = Field(
+        default_factory=list,
+        description="Liste offener Fragen oder Punkte für diesen Baustein",
+    )
+
+
+class BsiEvaluationUpdate(BaseModel):
+    """Eingabeformat zur Aktualisierung einer BSI‑Baustein‑Bewertung.
+
+    Es können sowohl ``status`` als auch ``comment`` oder nur eines der Felder
+    angegeben werden. Nicht angegebene Felder bleiben unverändert.
+    """
+    status: str | None = Field(
+        default=None,
+        description="Neuer Status des Bausteins (z. B. 'teilweise' oder 'erfüllt')",
+    )
+    comment: str | None = Field(
+        default=None,
+        description="Neuer Kommentar zur Bewertung",
+    )
+
+
+class BsiGenerateResponse(BaseModel):
+    """Antwort auf die Generierung mehrerer BSI‑Baustein‑Bewertungen."""
+    items: List[BsiEvaluationOut]
 
 
 __all__ = [
@@ -424,4 +478,9 @@ __all__ = [
     "JobCreate",
     "JobStatus",
     "JobOut",
+    # BSI Bausteine
+    "BsiGenerateRequest",
+    "BsiEvaluationOut",
+    "BsiEvaluationUpdate",
+    "BsiGenerateResponse",
 ]

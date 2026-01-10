@@ -134,3 +134,20 @@ professionellere Darstellung der exportierten Artefakte und
 verhindern, dass Text im PDF rechts abgeschnitten wird. Die
 Export‑Schnittstellen und Endpunkte bleiben unverändert – nur
 die Darstellung der Inhalte hat sich verbessert.
+
+BSI‑Baustein‑Bewertung (Block 11)
+In Block 11 wurde ein neues Modul eingeführt, das die Bewertung von
+einzelnen BSI‑Grundschutz‑Bausteinen ermöglicht. Über den Endpunkt
+POST /api/v1/projects/{project_id}/bsi/generate können Nutzer eine
+Liste von Baustein‑Codes (z. B. SYS.2.1 oder APP.1.2) an das
+Backend übergeben. Für jedes Modul legt das System eine initiale
+Bewertung mit dem Status offen an und erzeugt eine offene Frage,
+die den Umsetzungsstand des Bausteins erfasst. Alle Bewertungen
+werden in einem speicherresidenten Store gespeichert. Weitere
+Endpunkte erlauben das Auflisten aller Bausteine eines Projekts
+(GET /api/v1/projects/{project_id}/bsi), das Abrufen einer
+einzelnen Bewertung (GET /api/v1/projects/{project_id}/bsi/{module_code})
+sowie das Aktualisieren des Status oder Kommentars eines Bausteins
+(PUT /api/v1/projects/{project_id}/bsi/{module_code}). Dieses
+Modul bildet die Grundlage für eine strukturierte Soll‑Ist‑Analyse
+der BSI‑Bausteine und erleichtert die Erfassung offener Punkte.

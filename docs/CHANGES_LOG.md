@@ -133,3 +133,24 @@ beschreibt (siehe „Dokumentenlayout und Export (Block 10)“).
 Bibliotheken python-docx und reportlab waren bereits
 in Block 09 integriert. Die Verbesserungen beruhen auf
 bestehender Funktionalität.
+
+Block 11 – BSI‑Baustein‑Bewertung
+•   Neues Modul: backend/app/api/bsi.py implementiert einen Router
+zur Verwaltung von BSI‑Baustein‑Bewertungen. Der Router stellt
+Endpunkte zum Generieren (POST /projects/{project_id}/bsi/generate),
+zum Auflisten (GET /projects/{project_id}/bsi), zum Abrufen
+(GET /projects/{project_id}/bsi/{module_code}) und zum Aktualisieren
+(PUT /projects/{project_id}/bsi/{module_code}) von Bewertungen
+bereit. Die Bewertungen werden im speicherresidenten bsi_store
+abgelegt.
+•   Erweiterungen in backend/app/schemas.py: Neue Pydantic‑Modelle
+BsiGenerateRequest, BsiEvaluationOut, BsiEvaluationUpdate
+und BsiGenerateResponse beschreiben die Eingabe‑ und
+Ausgabeformate der BSI‑API.
+•   Aktualisierung von backend/app/main.py: Der bsi_router wird
+neben den bestehenden Routern (Health, Ready, Jobs, Export) unter
+/api/v1 registriert.
+•   Anpassungen in backend/app/api/__init__.py: Der BSI‑Router
+und der Export‑Router werden in get_api_router eingebunden.
+•   docs/TRUTH.md erweitert: Ein neuer Abschnitt „BSI‑Baustein‑Bewertung
+(Block 11)“ beschreibt Zweck, Endpunkte und Nutzung des neuen Moduls.
