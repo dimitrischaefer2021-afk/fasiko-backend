@@ -69,10 +69,67 @@ Chat, Ready, Jobs) unter /api/v1 registriert.
 Exporten (Block 08)“ beschreibt den Download‑Endpunkt und dessen
 Nutzung.
 
-Block 09 – Export als DOCX/PDF
-    • Neue Dependencies: python-docx und reportlab in backend/requirements.txt.
-    • Neues Modul: backend/app/exporter.py exportiert Artefakte aus der DB in txt/md/docx/pdf
-      und packt sie in ein ZIP-Archiv (Zip-Slip safe).
-    • jobs.py erweitert: Export-Job nutzt exporter.py und schreibt result_file={job_id}.zip.
-    • export.py vereinheitlicht: GET /api/v1/exports/{job_id} liefert ZIP des completed Jobs.
-    • main.py erweitert: Registriert jobs_router und export_router zusätzlich zu bestehenden Routern.
+Block 09 – DOCX/PDF‑Export
+•   Neue Abhängigkeiten: python-docx und reportlab werden der
+Datei backend/requirements.txt hinzugefügt, um die
+Erstellung von DOCX- und PDF-Dateien zu ermöglichen.
+•   Erweiterungen in backend/app/api/jobs.py:
+– Die Hintergrundfunktion _run_export_job erzeugt jetzt
+Platzhalter-Dateien im Format txt, docx oder pdf.
+Für docx wird python-docx genutzt, um eine einfache
+Word-Datei mit einer Überschrift und einem Absatz zu
+erstellen. Für pdf wird reportlab.platypus verwendet,
+um ein PDF mit Titel und Fließtext zu generieren. Die
+Generierung erfolgt nur, wenn die jeweiligen Bibliotheken
+installiert sind; andernfalls schlägt der Job mit
+status=failed fehl.
+– Die Validierung im Job-Endpoint prüft nun, ob das
+angegebene Format zu den erlaubten Werten txt, docx
+oder pdf gehört. Bei einem nicht unterstützten Format
+wird eine 400-Fehlerantwort ausgegeben.
+•   Aktualisierte Schemas: Das Pydantic-Modell JobCreate
+dokumentiert jetzt, dass format eines der drei erlaubten
+Formate sein muss (txt, docx, pdf). Der
+Description-Text und das Beispiel wurden entsprechend
+angepasst.
+•   Anpassung von docs/TRUTH.md: Ein neuer Abschnitt
+„DOCX/PDF‑Export (Block 09)“ beschreibt die Erweiterung des
+Export-Services um die Formate DOCX und PDF, erläutert den
+Einsatz der Bibliotheken python-docx und reportlab und
+weist auf die Formatvalidierung und Fehlerbehandlung hin.
+•   Keine Änderungen an anderen Modulen: Die bestehende
+Download-Logik aus Block 08 bleibt unverändert; sie liefert
+weiterhin das erzeugte ZIP-Archiv, das nun auch DOCX- oder
+PDF-Dateien enthalten kann.
+
+Block 10 – Verbessertes Dokumentenlayout
+•   Neues Modul backend/app/exporter.py wurde erstellt, das
+sämtliche Export-Funktionen bündelt. Es lädt aktuelle
+Artefakt-Versionen aus der Datenbank, generiert Dateien in
+verschiedenen Formaten (txt, md, docx, pdf) und erstellt ein
+ZIP-Archiv. Das Modul sorgt für sichere Dateinamen und
+entfernt temporäre Dateien nach dem Export.
+•   Die PDF-Erstellung verwendet nun reportlab.platypus mit
+symmetrischen Seitenrändern von 50 pt links und rechts sowie
+automatischem Zeilenumbruch. Markdown-Überschriften werden
+in PDF-Heading-Stile übertragen, Listenpunkte werden mit einem
+einheitlichen Aufzählungssymbol versehen, und leerzeilen
+erzeugen Abstände im Dokument. Damit wird verhindert, dass
+Text abgeschnitten wird oder am Rand klebt.
+•   Die DOCX-Erzeugung erkennt Überschriften der Stufen 1–3 und
+formatiert sie als Word-Heading (Heading 1–3). Numerierte
+Zeilen werden als nummerierte Listen (List Number) in
+Word angelegt, während Aufzählungen mit - oder * als
+Bullet-Listen (List Bullet) umgesetzt werden. Normale
+Zeilen werden als einfache Absätze geschrieben.
+•   backend/app/api/jobs.py wurde hinsichtlich der
+Dokumentation aktualisiert: Die Docstrings erklären nun alle
+unterstützten Formate und das Zusammenspiel mit dem neuen
+exporter-Modul. Die Job-Logik selbst bleibt unverändert.
+•   docs/TRUTH.md wurde um einen neuen Abschnitt ergänzt,
+der die verbesserten Layouts und das Verhalten des Exports
+beschreibt (siehe „Dokumentenlayout und Export (Block 10)“).
+•   Es wurden keine neuen Abhängigkeiten hinzugefügt; die
+Bibliotheken python-docx und reportlab waren bereits
+in Block 09 integriert. Die Verbesserungen beruhen auf
+bestehender Funktionalität.

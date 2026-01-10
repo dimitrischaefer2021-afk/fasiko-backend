@@ -94,21 +94,43 @@ FileResponse zurück. Dieses Feature erweitert den
 Job‑Service, ohne die bestehenden Block 07‑Funktionen zu
 beeinflussen.
 
-Export DOCX/PDF (Block 09)
-    In Block 09 wurde der Export-Job erweitert, sodass Artefakte nicht nur als TXT/MD,
-    sondern auch als DOCX und PDF exportiert werden können. Der Export nutzt die
-    aktuellen Artefakt-Versionen aus der Datenbank (Artifact.current_version) und
-    erzeugt pro Artefakt eine Datei im gewünschten Format. Alle Dateien werden
-    in ein ZIP-Archiv gepackt (Zip-Slip geschützt über Basenames) und unter EXPORT_DIR
-    gespeichert.
+DOCX/PDF‑Export (Block 09)
+In Block 09 wird der Export‑Service ausgebaut: Nutzer können
+Artefakte nun auch als Microsoft Word‑Dokumente (DOCX) oder
+PDF‑Dateien exportieren. Beim Start eines Export‑Jobs darf im
+Feld format neben txt jetzt auch docx oder pdf
+angegeben werden (Standard bleibt txt). Für jedes Artefakt
+wird im angegebenen Format eine Datei erzeugt und anschließend
+wie gewohnt zu einer ZIP‑Datei zusammengefasst. Die Erstellung
+der unterschiedlichen Formate basiert auf externen Bibliotheken:
+•   python‑docx wird verwendet, um ein einfaches DOCX
+mit einer Überschrift (Artefakt‑ID) und einem
+Platzhaltertext zu erzeugen.
+•   reportlab nutzt das Platypus‑Modul, um ein PDF
+mit Titel und Platzhaltertext zu erstellen. Es wird
+ausschließlich SimpleDocTemplate und Standard‑Styles
+verwendet, um die Richtlinien für PDF‑Exports einzuhalten.
+Beide Bibliotheken werden erst zur Laufzeit importiert. Falls
+eine der Libraries nicht installiert ist, schlägt der Job mit
+status=failed fehl und die Fehlermeldung wird im Job‑Status
+zurückgegeben. Nicht unterstützte Formate führen zu einer
+400 Bad Request. Der Download‑Endpunkt (Block 08)
+funktioniert unverändert: Er liefert das erzeugte ZIP‑Archiv
+unabhängig vom enthaltenen Dateiformat.
 
-    Unterstützte Formate:
-        - txt
-        - md
-        - docx
-        - pdf
-
-    Endpunkte:
-        - POST /api/v1/jobs (type=export, artifact_ids, format)
-        - GET  /api/v1/jobs/{job_id}
-        - GET  /api/v1/exports/{job_id}  (Download ZIP)
+Dokumentenlayout und Export (Block 10)
+In Block 10 wurde die Export‑Funktionalität weiterentwickelt,
+um die Formatierung der ausgegebenen Dateien zu verbessern. Die
+PDF‑Erstellung nutzt jetzt das Platypus‑Modul von reportlab
+zusammen mit symmetrischen Seitenrändern (50 pt links und
+rechts) und automatischem Zeilenumbruch. Überschriften aus den
+generierten Markdown‑Inhalten werden in Heading‑Stile (1–3)
+umgesetzt, und Listenpunkte werden einheitlich mit Aufzählungs-
+symbolen versehen. In der DOCX‑Erzeugung werden Überschriften
+der Stufen 1–3 erkannt und in Word‑Headings überführt;
+numerierte Listen erscheinen als nummerierte Word‑Listen und
+Aufzählungen als Bullets. Diese Anpassungen sorgen für eine
+professionellere Darstellung der exportierten Artefakte und
+verhindern, dass Text im PDF rechts abgeschnitten wird. Die
+Export‑Schnittstellen und Endpunkte bleiben unverändert – nur
+die Darstellung der Inhalte hat sich verbessert.

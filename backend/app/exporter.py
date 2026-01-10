@@ -1,14 +1,23 @@
 """
-Export-Funktionen für Jobs.
+Export-Funktionen für Jobs und Exporte.
 
-Block 09:
-- Exportiert echte Artefakt-Inhalte aus der DB in Dateien (txt/md/docx/pdf)
-- Packt die Dateien in ein ZIP-Archiv
-- Zip-Slip Schutz: nur Basename als arcname
+Dieser Modul stellt die Logik bereit, um aktuelle Artefaktinhalte aus
+der Datenbank in unterschiedliche Dateiformate zu exportieren und als
+ZIP-Archiv zu bündeln. Es unterstützt Text (``.txt``), Markdown (``.md``),
+Word (``.docx``) und PDF (``.pdf``) und sorgt dabei für eine einfache,
+lesbare Struktur der erzeugten Dokumente.
 
-Wichtig:
-- DOCX/PDF Rendering ist bewusst schlicht (MVP), aber stabil.
-- Keine externen Binaries, Multi-Arch kompatibel.
+Die PDF-Erzeugung nutzt ``reportlab`` mit symmetrischen Seitenrändern
+(50 pt links und rechts) und einfachem Zeilenumbruch. Die DOCX-Erzeugung
+wandelt Markdown-Überschriften in Word-Überschriften (Heading 1–3),
+Zahlenlisten in nummerierte Listen und Aufzählungen in Bullet-Listen.
+
+Alle erzeugten Dateien werden in ein temporäres Verzeichnis geschrieben
+und anschließend in ein ZIP-Archiv gepackt. Temporäre Dateien werden
+anschließend entfernt.
+
+Block 09 – hier ergänzt und verbessert in Block 10: Layout und
+Dokumentenstruktur.
 """
 
 from __future__ import annotations
@@ -19,7 +28,7 @@ import zipfile
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Iterable, List, Tuple
+from typing import List, Tuple
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -27,24 +36,36 @@ from sqlalchemy.orm import Session
 from .models import Artifact, ArtifactVersion
 from .settings import EXPORT_DIR
 
-# Optional dependencies (Block 09)
+# Optional Abhängigkeiten für DOCX und PDF
 from docx import Document  # type: ignore
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer  # type: ignore
+from reportlab.lib.styles import getSampleStyleSheet  # type: ignore
 from reportlab.lib.pagesizes import A4  # type: ignore
-from reportlab.pdfgen import canvas  # type: ignore
 
 
 @dataclass(frozen=True)
 class ExportItem:
+    """Container für ein zu exportierendes Artefakt.
+
+    ``artifact_id`` ist die UUID des Artefakts. ``filename_base`` dient
+    als Basisname der Zieldatei ohne Extension. ``content_md`` enthält
+    den Markdown-Inhalt des aktuellen Artefaktstands.
+    """
+
     artifact_id: str
     filename_base: str
     content_md: str
 
 
 def _safe_filename(name: str) -> str:
+    """Säubert einen Dateinamen, um gefährliche Zeichen zu entfernen.
+
+    Es werden nur alphanumerische Zeichen sowie Punkt, Unterstrich und
+    Bindestrich zugelassen. Gleichzeitig wird die Länge begrenzt, um
+    Dateisystemprobleme zu vermeiden. Falls der Name leer ist, wird
+    ``artifact`` zurückgegeben.
     """
-    Prevent Zip-Slip and weird filenames.
-    Keeps only safe chars and trims length.
-    """
+
     s = name.strip()
     s = re.sub(r"[^a-zA-Z0-9._-]+", "_", s)
     s = s.strip("._-")
@@ -52,18 +73,23 @@ def _safe_filename(name: str) -> str:
 
 
 def _load_artifacts_current(db: Session, artifact_ids: List[str]) -> List[ExportItem]:
+    """Lädt die aktuellen Versionen der angegebenen Artefakte.
+
+    Gibt eine Liste von ``ExportItem``-Instanzen zurück. Für nicht
+    existierende Artefakte wird ein Platzhalter mit Hinweistext
+    erstellt, damit der Export konsistent bleibt.
+    """
+
     items: List[ExportItem] = []
     if not artifact_ids:
         return items
 
-    # fetch artifacts
     arts = db.execute(select(Artifact).where(Artifact.id.in_(artifact_ids))).scalars().all()
     art_by_id = {a.id: a for a in arts}
 
     for aid in artifact_ids:
         art = art_by_id.get(aid)
         if not art:
-            # If artifact id does not exist: export placeholder entry but keep job successful
             items.append(
                 ExportItem(
                     artifact_id=aid,
@@ -73,15 +99,15 @@ def _load_artifacts_current(db: Session, artifact_ids: List[str]) -> List[Export
             )
             continue
 
-        # current version content
         v = db.execute(
             select(ArtifactVersion)
             .where(ArtifactVersion.artifact_id == art.id)
             .where(ArtifactVersion.version == art.current_version)
         ).scalars().first()
-
         content = v.content_md if v else ""
-        base = _safe_filename(f"{art.type}_{art.title}") if getattr(art, "title", None) else _safe_filename(art.type)
+        base = _safe_filename(
+            f"{art.type}_{getattr(art, 'title', '')}" if getattr(art, "title", None) else art.type
+        )
         items.append(ExportItem(artifact_id=aid, filename_base=base, content_md=content or ""))
 
     return items
@@ -96,14 +122,19 @@ def _write_md(path: Path, content: str) -> None:
 
 
 def _write_docx(path: Path, content_md: str) -> None:
+    """Schreibt den Markdown-Inhalt in eine DOCX-Datei mit einfacher Struktur.
+
+    Es werden Überschriften der Stufen 1–3 erkannt und in die
+    entsprechenden Word-Heading-Levels umgesetzt. Numerierte Zeilen
+    werden als nummerierte Liste ("List Number") formatiert, und
+    Aufzählungen mit ``-`` oder ``*`` werden als Bullets ("List Bullet")
+    umgesetzt. Alle anderen Zeilen werden als normale Absätze
+    geschrieben.
     """
-    Very simple Markdown -> DOCX:
-    - #, ##, ### headings
-    - list items starting with '-', '*'
-    - else paragraph
-    """
+
     doc = Document()
-    for raw in content_md.splitlines():
+    lines = content_md.splitlines()
+    for raw in lines:
         line = raw.rstrip()
         if not line.strip():
             continue
@@ -113,54 +144,65 @@ def _write_docx(path: Path, content_md: str) -> None:
             doc.add_heading(line[3:].strip(), level=2)
         elif line.startswith("# "):
             doc.add_heading(line[2:].strip(), level=1)
-        elif line.lstrip().startswith(("- ", "* ")):
-            doc.add_paragraph(line.lstrip()[2:].strip(), style="List Bullet")
+        elif re.match(r"^\s*\d+\.\s+", line):
+            text = re.sub(r"^\s*\d+\.\s+", "", line).strip()
+            doc.add_paragraph(text, style="List Number")
+        elif re.match(r"^\s*[-*]\s+", line):
+            text = re.sub(r"^\s*[-*]\s+", "", line).strip()
+            doc.add_paragraph(text, style="List Bullet")
         else:
             doc.add_paragraph(line)
     doc.save(str(path))
 
 
 def _write_pdf(path: Path, content_md: str) -> None:
-    """
-    Very simple Markdown -> PDF:
-    - removes markdown markers and prints lines.
-    """
-    c = canvas.Canvas(str(path), pagesize=A4)
-    width, height = A4
-    y = height - 50
-    line_height = 14
+    """Schreibt den Markdown-Inhalt in eine PDF-Datei.
 
-    def new_page():
-        nonlocal y
-        c.showPage()
-        y = height - 50
+    Dabei werden Überschriften erkannt und mit vordefinierten
+    Layout-Stilen versehen. Listenpunkte werden durch ein "•" ersetzt.
+    Es werden symmetrische Seitenränder verwendet und automatische
+    Zeilenumbrüche über das ReportLab-Framework erzeugt, um das
+    Überlaufen des Textes zu verhindern.
+    """
 
-    for raw in content_md.splitlines():
+    doc = SimpleDocTemplate(
+        str(path),
+        pagesize=A4,
+        leftMargin=50,
+        rightMargin=50,
+        topMargin=50,
+        bottomMargin=50,
+    )
+    styles = getSampleStyleSheet()
+    flow: List = []
+    lines = content_md.splitlines()
+    for raw in lines:
         line = raw.rstrip()
-        # strip some markdown
-        line = re.sub(r"^#{1,6}\s+", "", line)
-        line = re.sub(r"^\s*[-*]\s+", "• ", line)
         if not line.strip():
-            y -= line_height
-            if y < 50:
-                new_page()
+            # Leerzeile → Abstand
+            flow.append(Spacer(1, 8))
             continue
-
-        # very naive wrap
-        max_chars = 110
-        while len(line) > max_chars:
-            part = line[:max_chars]
-            c.drawString(50, y, part)
-            y -= line_height
-            if y < 50:
-                new_page()
-            line = line[max_chars:]
-        c.drawString(50, y, line)
-        y -= line_height
-        if y < 50:
-            new_page()
-
-    c.save()
+        if line.startswith("### "):
+            text = line[4:].strip()
+            flow.append(Paragraph(text, styles.get("Heading3", styles["Heading2"])) )
+        elif line.startswith("## "):
+            text = line[3:].strip()
+            flow.append(Paragraph(text, styles.get("Heading2", styles["Heading2"])) )
+        elif line.startswith("# "):
+            text = line[2:].strip()
+            flow.append(Paragraph(text, styles.get("Heading1", styles["Heading1"])) )
+        elif re.match(r"^\s*\d+\.\s+", line):
+            # Numerierte Liste → Bullet für PDF
+            text = re.sub(r"^\s*\d+\.\s+", "", line).strip()
+            flow.append(Paragraph(f"• {text}", styles["Normal"]))
+        elif re.match(r"^\s*[-*]\s+", line):
+            text = re.sub(r"^\s*[-*]\s+", "", line).strip()
+            flow.append(Paragraph(f"• {text}", styles["Normal"]))
+        else:
+            flow.append(Paragraph(line, styles["Normal"]))
+        # Kleiner Abstand zwischen den Abschnitten
+        flow.append(Spacer(1, 4))
+    doc.build(flow)
 
 
 def export_artifacts_to_zip(
@@ -169,10 +211,14 @@ def export_artifacts_to_zip(
     export_format: str,
     job_id: str,
 ) -> Tuple[str, str]:
+    """Exportiert Artefakte in das gewünschte Format und packt sie in ein ZIP.
+
+    ``export_format`` kann ``txt``, ``md``, ``docx`` oder ``pdf`` sein.
+    Das ZIP-Archiv wird im ``EXPORT_DIR`` gespeichert und enthält für
+    jedes Artefakt eine Datei. Es wird ein Tupel aus Dateiname des
+    ZIPs und dem absoluten Pfad zurückgegeben.
     """
-    Exports artifacts into files and zips them.
-    Returns (zip_filename, zip_abs_path)
-    """
+
     fmt = (export_format or "md").lower().strip()
     if fmt not in {"txt", "md", "docx", "pdf"}:
         fmt = "md"
@@ -185,7 +231,6 @@ def export_artifacts_to_zip(
 
     items = _load_artifacts_current(db, artifact_ids)
 
-    # if empty, still create a zip with a note
     if not items:
         note = tmp_dir / "README.txt"
         _write_txt(note, "Kein Export-Inhalt: artifact_ids war leer.\n")
@@ -203,15 +248,12 @@ def export_artifacts_to_zip(
 
     zip_filename = f"{job_id}.zip"
     zip_path = base_dir / zip_filename
-
     with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         for p in tmp_dir.iterdir():
-            if not p.is_file():
-                continue
-            # Zip-Slip safe: arcname = basename
-            zf.write(p, arcname=p.name)
+            if p.is_file():
+                zf.write(p, arcname=p.name)
 
-    # cleanup tmp dir
+    # Aufräumen des temporären Verzeichnisses
     for p in tmp_dir.iterdir():
         try:
             p.unlink()
