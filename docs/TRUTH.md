@@ -195,3 +195,32 @@ Katalog definiert. Bitte ergänzen Sie die Maßnahmen.``) als Open
 Point zurückgegeben. Dieses Verhalten verhindert fälschlicherweise
 den Status ``erfüllt`` bei nicht definierten Bausteinen und macht
 transparent, dass eine Definition der Maßnahmen fehlt.
+
+Projektquellen‑Upload (Block 13)
+Um die KI‑Analyse mit realen Inhalten zu versorgen, wurde in Block 13
+ein Upload‑Mechanismus für Projektquellen eingeführt. Über den
+neuen Endpunkt POST /api/v1/projects/{project_id}/sources/upload
+können Nutzer eine oder mehrere Dateien (TXT, MD, DOCX oder PDF)
+für ein Projekt hochladen. Die hochgeladenen Dateien werden im
+Verzeichnis UPLOAD_DIR/<project_id> gespeichert, das per
+Umgebungsvariable konfiguriert ist (Standard: /data/uploads).
+
+Für jede Datei wird eine einfache Textextraktion durchgeführt, um
+Inhalte für die BSI‑Analyse verfügbar zu machen:
+    • **TXT/MD** – der gesamte Text wird direkt aus dem Upload gelesen.
+    • **DOCX** – der Text wird mithilfe der Bibliothek
+      ``python‑docx`` extrahiert.
+    • **PDF** – die Datei wird gespeichert, die Extraktion ist jedoch
+      noch nicht implementiert (Status = ``partial``). Diese Dateien
+      fließen in die Analyse ein, sobald ein Parser ergänzt wird.
+Die Ergebnisse der Extraktion werden als ``SourceUploadResponse``
+zurückgegeben, das für jede Datei eine ID, den Dateinamen,
+den Extraktionsstatus, eine optionale Fehlermeldung und die Länge
+des extrahierten Textes enthält. Die Metadaten aller Quellen
+werden in einem speicherresidenten ``sources_store`` abgelegt.
+
+Der Upload‑Endpoint bildet die Grundlage für spätere Blöcke, in
+denen die KI automatisch Text aus Projektquellen verarbeiten kann.
+Er ergänzt das bestehende Upload‑Verhalten für Chat‑Anhänge und
+Open‑Point‑Anhänge und stellt sicher, dass alle relevanten
+Dokumente an einem konsistenten Ort gespeichert sind.

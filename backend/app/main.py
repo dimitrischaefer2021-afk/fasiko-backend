@@ -25,6 +25,7 @@ from .api.ready import router as ready_router
 from .api.jobs import router as jobs_router  # Neu: Jobs‑Router
 from .api.export import router as export_router  # Neu: Export‑Router
 from .api.bsi import router as bsi_router  # Neu: BSI‑Baustein‑Router
+from .api.sources import router as sources_router  # Neu: Quellen‑Router
 
 
 @asynccontextmanager
@@ -55,3 +56,4 @@ app.include_router(ready_router, prefix="/api/v1")
 app.include_router(jobs_router, prefix="/api/v1")  # Registrierung des Jobs‑Routers
 app.include_router(export_router, prefix="/api/v1")  # Registrierung des Export‑Routers
 app.include_router(bsi_router, prefix="/api/v1")  # Registrierung des BSI‑Routers
+app.include_router(sources_router, prefix="/api/v1")  # Registrierung des Quellen‑Routers

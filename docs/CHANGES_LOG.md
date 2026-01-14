@@ -196,3 +196,34 @@ Baustein SYS.3.2.2 ist nicht im Katalog definiert. Bitte ergänzen Sie die Maßn
 damit der Nutzer darauf aufmerksam wird. Dieses Verhalten
 verhindert fälschliche Bewertungen als erfüllt und sorgt
 für Transparenz, wenn ein Modul noch nicht abgedeckt ist.
+
+Block 13 – Projektquellen‑Upload
+•   Neues Modul: backend/app/api/sources.py implementiert einen
+Router zum Hochladen von Projektquellen. Der Endpunkt
+POST /api/v1/projects/{project_id}/sources/upload erlaubt
+das Hochladen mehrerer Dateien (TXT, MD, DOCX oder PDF) für ein
+Projekt. Die Dateien werden im Verzeichnis UPLOAD_DIR/<project_id>
+abgelegt.
+•   Extraktion: Für TXT- und MD‑Dateien wird der Text direkt
+eingelesen; für DOCX‑Dateien erfolgt die Extraktion mit
+python‑docx. PDF‑Dateien werden gespeichert, aber noch
+nicht extrahiert (Status = partial). Für jedes Upload
+liefert der Endpunkt ein Objekt SourceUploadResponse mit
+ID, Dateiname, Status, optionalem Fehler und Länge des
+extrahierten Textes.
+•   Neuer In‑Memory‑Store: Die Metadaten aller hochgeladenen
+Quellen werden im sources_store gespeichert, strukturiert
+nach Projekt und Source‑ID. Dieses Store wird vom
+Analyse‑Modul genutzt, um Texte für die BSI‑Baustein‑Analyse
+zu sammeln.
+•   Neue Schemas: SourceUploadResponse wurde in
+backend/app/schemas.py hinzugefügt. Dieses Modell
+beschreibt die Antwort auf den Upload‑Endpoint (ID,
+Dateiname, Status, optionaler Grund, extrahierte Textlänge).
+•   Router‑Registrierung: backend/app/api/__init__.py und
+backend/app/main.py wurden angepasst, um den neuen
+sources_router einzubinden. Dadurch ist der Upload‑Endpoint
+unter /api/v1 erreichbar.
+•   Dokumentation: docs/TRUTH.md wurde um einen Abschnitt
+„Projektquellen‑Upload (Block 13)“ ergänzt, der Zweck,
+Funktionsweise und Einschränkungen des Uploads erläutert.

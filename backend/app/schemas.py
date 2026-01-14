@@ -78,6 +78,28 @@ class SourceReplaceOut(BaseModel):
     old_id: str
     new: SourceOut
 
+# -------- Source Upload (Block 13) --------
+
+class SourceUploadResponse(BaseModel):
+    """Antwort auf das Hochladen einer oder mehrerer Dateien.
+
+    Bei der Projektquellen‑Analyse werden verschiedene Quelldateien hochgeladen. Diese
+    Antwort beschreibt das Ergebnis der Verarbeitung einer einzelnen Datei. Der
+    ``status`` gibt an, ob der Upload und die Textextraktion erfolgreich waren
+    (``ok``), teilweise erfolgreich (``partial``) oder fehlgeschlagen (``error``).
+
+    Die Textextraktion ist in Block 13 nur für TXT, MD und DOCX implementiert.
+    PDFs werden gespeichert, aber die Extraktion bleibt unvollständig (status =
+    ``partial``). Die Länge des extrahierten Textes wird in ``extracted_text_len``
+    angegeben, und ``reason`` enthält eine optionale Fehlermeldung.
+    """
+
+    id: str = Field(..., description="Eindeutige Kennung der hochgeladenen Datei")
+    filename: str = Field(..., description="Originaldateiname des Uploads")
+    status: str = Field(..., description="Verarbeitungsstatus: ok|partial|error")
+    reason: str | None = Field(default=None, description="Fehlerbeschreibung bei status=partial|error")
+    extracted_text_len: int = Field(..., description="Länge des extrahierten Textes (0 bei Misserfolg)")
+
 # -------- Artifacts (Dokumente) + Versionierung --------
 
 class ArtifactCreate(BaseModel):
@@ -541,6 +563,8 @@ __all__ = [
     "ChatAssistantIn",
     "WebSearchResult",
     "ChatAssistantReplyOut",
+    # Source upload (Block 13)
+    "SourceUploadResponse",
     # Jobs
     "JobCreate",
     "JobStatus",
