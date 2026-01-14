@@ -154,3 +154,45 @@ neben den bestehenden Routern (Health, Ready, Jobs, Export) unter
 und der Export‑Router werden in get_api_router eingebunden.
 •   docs/TRUTH.md erweitert: Ein neuer Abschnitt „BSI‑Baustein‑Bewertung
 (Block 11)“ beschreibt Zweck, Endpunkte und Nutzung des neuen Moduls.
+
+Block 12 – BSI‑Baustein‑Analyse
+•   Neuer Endpunkt: POST /api/v1/projects/{project_id}/bsi/analyze. Dieser
+Endpunkt ermöglicht eine KI‑gestützte Soll‑Ist‑Analyse von
+BSI‑Bausteinen anhand der hochgeladenen Projektquellen. Für
+jeden Baustein werden vordefinierte Maßnahmen (z. B.
+SYS.2.1.A1) geprüft. Das System sucht in den Texten nach
+Hinweisen, bewertet die Erfüllung (erfüllt, teilweise,
+offen) und liefert eine detaillierte Liste der Maßnahmen
+inklusive Nachweisen und offenen Fragen.
+•   Neue Schemas: BsiMeasureEvaluation, BsiEvaluationDetailOut
+und BsiAnalyzeResponse in backend/app/schemas.py
+beschreiben die Struktur der Analyseergebnisse. Eine
+Maßnahme wird mit measure_id, status, evidence und
+open_point repräsentiert. Ein Baustein erhält einen
+aggregierten Status und eine Liste dieser Maßnahmen.
+•   Erweiterungen in backend/app/api/bsi.py: Eine neue
+Funktion analyze_bsi analysiert die Bausteine. Sie liest
+Texte aus dem Upload‑Verzeichnis des Projekts (nur TXT,
+MD und DOCX werden unterstützt) und wendet eine einfache
+Heuristik an, um Anforderungen zu bewerten. Gefundene
+Textstellen werden als Evidence gespeichert; fehlende
+Informationen führen zu offenen Fragen. Ein internes
+Dictionary MODULE_MEASURES definiert exemplarisch die
+Maßnahmen je Baustein.
+•   Anpassungen in backend/app/schemas.py: Die oben genannten
+Klassen und ihre Importe wurden hinzugefügt; __all__
+aktualisiert. Die bestehenden Baustein‑Schemas bleiben
+unverändert.
+•   docs/TRUTH.md erweitert: Ein Abschnitt “BSI‑Baustein‑Analyse
+(Block 12)” beschreibt die neue KI‑Analyse, das Ergebnisformat
+und deren Einschränkungen. Die Analyse nutzt ausschließlich
+Projektquellen; externe Websuche oder allgemeines KI‑Wissen
+ist ausgeschlossen.
+•   Fehlerbehandlung bei unbekannten Bausteinen: Wenn ein Modul
+nicht im internen Katalog MODULE_MEASURES hinterlegt ist,
+wird es nun mit dem Status offen bewertet. Zusätzlich
+erzeugt die Analyse eine offene Frage (z. B.
+Baustein SYS.3.2.2 ist nicht im Katalog definiert. Bitte ergänzen Sie die Maßnahmen.),
+damit der Nutzer darauf aufmerksam wird. Dieses Verhalten
+verhindert fälschliche Bewertungen als erfüllt und sorgt
+für Transparenz, wenn ein Modul noch nicht abgedeckt ist.

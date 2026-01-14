@@ -151,3 +151,47 @@ sowie das Aktualisieren des Status oder Kommentars eines Bausteins
 (PUT /api/v1/projects/{project_id}/bsi/{module_code}). Dieses
 Modul bildet die Grundlage für eine strukturierte Soll‑Ist‑Analyse
 der BSI‑Bausteine und erleichtert die Erfassung offener Punkte.
+
+BSI‑Baustein‑Analyse (Block 12)
+In Block 12 wird die BSI‑Baustein‑Bewertung um eine KI‑gestützte
+Analyse ergänzt. Über den neuen Endpunkt
+POST /api/v1/projects/{project_id}/bsi/analyze kann eine Liste
+von BSI‑Baustein‑Codes zur automatischen Soll‑Ist‑Bewertung
+übergeben werden. Die Analyse nutzt ausschließlich die beim
+Projekt hochgeladenen Quellen (TXT, MD oder DOCX) und durchsucht
+deren Inhalte nach Hinweisen für die Erfüllung der jeweiligen
+Maßnahmen. Die zugehörigen Maßnahmen (z. B. SYS.2.1.A1 für
+Patchmanagement) sind exemplarisch im Code hinterlegt und sollen in
+einer späteren Version aus offiziellen Quellen geladen werden.
+Für jede Maßnahme wird ein Status ermittelt:
+
+•   ``erfüllt`` – wenn die Anforderung vollständig in den
+    Projektquellen nachgewiesen wird.
+•   ``teilweise`` – wenn einige, aber nicht alle Schlüsselwörter
+    gefunden werden.
+•   ``offen`` – wenn kein Hinweis gefunden wird; in diesem Fall
+    wird eine konkrete offene Frage formuliert, die als Open Point
+    aufgeführt wird.
+
+Das Ergebnis der Analyse ist ein neues Schema
+``BsiEvaluationDetailOut``, das den aggregierten Status pro
+Baustein (``erfüllt``, ``teilweise`` oder ``offen``), die Liste der
+Einzelmaßnahmen und deren Nachweise sowie alle offenen Fragen
+enthält. Die KI‑Analyse ändert nichts an den manuellen
+Bewertungen (Block 11); sie liefert zusätzliche Informationen,
+die beim späteren Ausfüllen der Offenen Punkte helfen können. Die
+Analyse greift **niemals** auf externe Daten oder das Internet zu,
+sondern wertet nur die hochgeladenen Projektquellen aus. Für
+nicht unterstützte Dateitypen (z. B. PDF) wird aktuell kein Text
+extrahiert; diese Dateien fließen erst dann in die Analyse ein,
+wenn ein entsprechender Parser implementiert wurde.
+
+**Hinweis zu unbekannten Bausteinen:** Wenn ein Bausteincode in
+der aktuellen Implementierung nicht im internen Maßnahmenkatalog
+(``MODULE_MEASURES``) hinterlegt ist, wird der Baustein automatisch
+mit dem Status ``offen`` bewertet. In diesem Fall wird eine
+entsprechende offene Frage (z. B. ``Baustein SYS.3.2.2 ist nicht im
+Katalog definiert. Bitte ergänzen Sie die Maßnahmen.``) als Open
+Point zurückgegeben. Dieses Verhalten verhindert fälschlicherweise
+den Status ``erfüllt`` bei nicht definierten Bausteinen und macht
+transparent, dass eine Definition der Maßnahmen fehlt.

@@ -425,6 +425,73 @@ class BsiGenerateResponse(BaseModel):
     """Antwort auf die Generierung mehrerer BSI‑Baustein‑Bewertungen."""
     items: List[BsiEvaluationOut]
 
+# -------- BSI‑Analyse (Block 12) --------
+
+class BsiMeasureEvaluation(BaseModel):
+    """Bewertung einer einzelnen Maßnahme innerhalb eines BSI‑Bausteins.
+
+    Jede Maßnahme wird durch eine Kennung (z. B. ``SYS.2.1.A1``) identifiziert.
+    Der Status kann ``erfüllt``, ``teilweise``, ``nicht_erfüllt`` oder ``offen``
+    sein. In ``evidence`` werden relevante Textstellen aus den hochgeladenen
+    Dokumenten hinterlegt, die die Bewertung begründen. Wenn keine
+    ausreichenden Informationen vorliegen, wird eine konkrete Frage im Feld
+    ``open_point`` gespeichert.
+    """
+
+    measure_id: str = Field(..., description="Kennung der Maßnahme")
+    status: str = Field(
+        ...,
+        description="Bewertungsstatus (erfüllt|teilweise|nicht_erfüllt|offen)",
+    )
+    evidence: List[str] = Field(
+        default_factory=list,
+        description="Liste von Textstellen als Nachweis für die Bewertung",
+    )
+    open_point: str | None = Field(
+        default=None,
+        description=(
+            "Konkrete Frage oder Hinweis, wenn die Information in den Quellen fehlt"
+        ),
+    )
+
+
+class BsiEvaluationDetailOut(BaseModel):
+    """Detaillierte Bewertung eines BSI‑Bausteins.
+
+    Neben dem allgemeinen Status werden hier die Bewertungen der einzelnen
+    Maßnahmen aufgelistet. Das Feld ``status`` spiegelt den aggregierten
+    Zustand des Bausteins wider ("erfüllt", "teilweise", "offen"), basierend
+    auf den Bewertungen der Maßnahmen. ``open_points`` enthält alle offenen
+    Fragen aus den Maßnahmen.
+    """
+
+    module_code: str = Field(..., description="Code des BSI‑Bausteins")
+    status: str = Field(
+        ..., description="Aggregierter Status des Bausteins"
+    )
+    measures: List[BsiMeasureEvaluation] = Field(
+        default_factory=list,
+        description="Liste der Bewertungen für alle Maßnahmen des Bausteins",
+    )
+    comment: str | None = Field(
+        default=None,
+        description="Optionale Bemerkung oder Begründung zur Gesamtbewertung",
+    )
+    open_points: List[str] = Field(
+        default_factory=list,
+        description="Aggregierte offene Punkte aus den Maßnahmen",
+    )
+
+
+class BsiAnalyzeResponse(BaseModel):
+    """Antwort auf die KI‑Analyse mehrerer BSI‑Bausteine.
+
+    Diese Antwort enthält für jeden angefragten Baustein eine detaillierte
+    Bewertung mit einzelnen Maßnahmen, Status, Belegen und offenen Punkten.
+    """
+
+    items: List[BsiEvaluationDetailOut]
+
 
 __all__ = [
     # Projekte
@@ -483,4 +550,7 @@ __all__ = [
     "BsiEvaluationOut",
     "BsiEvaluationUpdate",
     "BsiGenerateResponse",
+    "BsiMeasureEvaluation",
+    "BsiEvaluationDetailOut",
+    "BsiAnalyzeResponse",
 ]
