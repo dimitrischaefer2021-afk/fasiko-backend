@@ -334,3 +334,61 @@ erstellt eine neue Version, die über die Bearbeitungsendpunkte
 angepasst werden kann. Der Nutzer entscheidet anschließend anhand
 einer diff‑basierten Zusammenfassung, ob die Änderungen übernommen
 oder verworfen werden sollen.
+
+Projektquellen‑Persistenz & Limits (Block 17)
+
+In Block 17 wird die Verwaltung von Projektquellen (Uploads) deutlich
+verbessert und der Summary‑Endpunkt aus Block 16 korrigiert.
+	•	Persistente Quellen: Bisher wurden hochgeladene Dateien nur im
+Verzeichnis UPLOAD_DIR/<project_id> gespeichert und in einem
+speicherresidenten sources_store verwaltet. Ab Block 17 werden
+alle Metadaten zu den Quellen in der Datenbanktabelle
+sources (SourceDocument) persistiert. Diese Tabelle
+enthält neben Datei‑ID, Name, Größe und Speicherdatum jetzt auch
+neue Felder zur Textextraktion:
+	•	extraction_status –  ok, partial oder error.
+	•	extraction_reason –  kurze Fehlerbeschreibung oder Grund für
+einen partiellen Erfolg.
+	•	extracted_text_len –  Anzahl der extrahierten Zeichen.
+Diese Werte werden beim Upload gesetzt. Für TXT/MD werden die
+Inhalte direkt eingelesen, für DOCX über python‑docx, bei PDF
+wird ab sofort mithilfe der Bibliothek PyPDF2 der Text
+extrahiert (falls die Bibliothek verfügbar ist). Schlägt die
+Extraktion fehl oder ist die Bibliothek nicht installiert, wird
+der Status error gesetzt und eine Fehlermeldung zurückgegeben.
+Leere Texte führen zu partial mit dem Grund „No text
+extracted“. Die In‑Memory‑Struktur sources_store
+bleibt vorerst bestehen, um die Kompatibilität zu älteren Modulen
+sicherzustellen; sie wird parallel zur Datenbank aktualisiert.
+	•	Upload‑Limits: Es gelten jetzt feste Grenzwerte für
+Projekt‑Uploads, die über Umgebungsvariablen steuerbar sind:
+	•	MAX_UPLOAD_BYTES (Standard 30 MB) – maximale Größe einer
+einzelnen Datei. Überschreiten Dateien diesen Wert, bricht der
+Upload mit HTTP 413 ab.
+	•	MAX_SOURCES_PER_PROJECT (Standard 50) – maximale Anzahl von
+Quellen pro Projekt. Werden mehr Dateien hochgeladen, als
+erlaubt sind (inklusive bereits gespeicherter Quellen), wird
+der Upload mit HTTP 400 abgelehnt.
+	•	Unterstützte Dateitypen sind unverändert .txt, .md, .docx und
+.pdf. Andere Endungen führen zu HTTP 400.
+	•	Summary‑Fix: Der Endpunkt
+GET /api/v1/projects/{project_id}/artifacts/{artifact_id}/versions/{version}/summary
+liefert ab Block 17 zwei wesentliche Verbesserungen:
+	•	Leere Vorgängerversion – für Version 1 wird immer
+eine leere Änderungsliste zurückgegeben (added_count = 0,
+removed_count = 0, changed_sections = []), weil es keinen
+Vergleichsstand gibt. Die früheren Zeilenzählungen für Version 1
+sind damit behoben.
+	•	Ignorieren von Formatänderungen – bei der Berechnung des
+Diffs werden nun vorab Leerzeilen und trailing spaces
+normalisiert. Mehrere aufeinanderfolgende Leerzeilen werden auf
+eine reduziert. Dadurch werden reine Formatänderungen (z. B.
+unterschiedliche Anzahl leerer Zeilen) nicht mehr als inhaltliche
+Änderungen gezählt. Nur echte Textänderungen wirken sich auf
+added_count/removed_count und changed_sections aus.
+
+Diese Anpassungen stellen sicher, dass hochgeladene Quellen
+nachvollziehbar gespeichert und später auch versioniert oder ersetzt
+werden können. Durch die Limits wird verhindert, dass einzelne
+Projekte den Speicher überlasten. Die Korrektur des Summary‑Endpoints
+erhöht die Transparenz bei der Versionsverwaltung.

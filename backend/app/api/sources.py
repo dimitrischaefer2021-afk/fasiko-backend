@@ -29,6 +29,10 @@ from uuid import uuid4
 
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, status
 
+from ..settings import MAX_UPLOAD_BYTES, MAX_SOURCES_PER_PROJECT
+from ..db import SessionLocal
+from .. import crud
+
 from ..schemas import SourceUploadResponse
 from ..settings import UPLOAD_DIR
 
@@ -78,9 +82,33 @@ def _extract_text_from_content(filename: str, content: bytes) -> tuple[str, str,
                 status_str = "error"
                 reason = str(exc)
     elif name.endswith(".pdf"):
-        # PDF-Extraktion ist noch nicht implementiert. Markiere als partial.
-        status_str = "partial"
-        reason = "PDF extraction not implemented"
+        # PDF-Extraktion: Versuche, Text mithilfe von PyPDF2 zu extrahieren. Falls die
+        # Bibliothek nicht verfügbar ist oder ein Fehler auftritt, markiere als error.
+        try:
+            from PyPDF2 import PdfReader  # type: ignore
+        except Exception:
+            # Bibliothek nicht installiert
+            status_str = "error"
+            reason = "PyPDF2 not installed"
+            extracted_text = ""
+        else:
+            try:
+                file_like = io.BytesIO(content)
+                reader = PdfReader(file_like)
+                extracted_text = "\n".join([
+                    page.extract_text() or "" for page in reader.pages  # type: ignore[attr-defined]
+                ])
+                # Wenn kein Text extrahiert werden konnte, gilt es als partial
+                if extracted_text.strip():
+                    status_str = "ok"
+                    reason = None
+                else:
+                    status_str = "partial"
+                    reason = "No text extracted"
+            except Exception as exc:
+                status_str = "error"
+                reason = str(exc)
+                extracted_text = ""
     else:
         status_str = "error"
         reason = f"Unsupported file extension for {filename}"
@@ -145,47 +173,96 @@ async def upload_project_sources(
     tag_list: List[str] | None = None
     if tags:
         tag_list = [t.strip() for t in tags.split(",") if t.strip()]
+    else:
+        tag_list = []
 
-    responses: List[SourceUploadResponse] = []
-    for upload in uploads:
-        source_id = str(uuid4())
-        original_name = upload.filename or "unnamed"
-        safe_name = f"{source_id}_{original_name}"
-        project_dir = os.path.join(UPLOAD_DIR, project_id)
-        os.makedirs(project_dir, exist_ok=True)
-        file_path = os.path.join(project_dir, safe_name)
-        content = await upload.read()
-        try:
-            with open(file_path, "wb") as f:
-                f.write(content)
-        except Exception as exc:
+    # Öffne DB-Session
+    db = SessionLocal()
+    try:
+        # Prüfe Limit Anzahl Quellen pro Projekt
+        existing_sources = crud.list_sources(db, project_id)
+        if len(existing_sources) + len(uploads) > MAX_SOURCES_PER_PROJECT:
             raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to save file {original_name}: {exc}",
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Maximale Anzahl Quellen pro Projekt überschritten ({MAX_SOURCES_PER_PROJECT})",
             )
-        status_str, reason, text_len = _extract_text_from_content(original_name, content)
-        meta = {
-            "id": source_id,
-            "project_id": project_id,
-            "filename": original_name,
-            "stored_filename": safe_name,
-            "content_type": upload.content_type,
-            "size_bytes": len(content),
-            "status": status_str,
-            "reason": reason,
-            "extracted_text_len": text_len,
-            "tags": tag_list,
-            "created_at": datetime.utcnow(),
-            "updated_at": datetime.utcnow(),
-        }
-        sources_store.setdefault(project_id, {})[source_id] = meta
-        responses.append(
-            SourceUploadResponse(
-                id=source_id,
+        responses: List[SourceUploadResponse] = []
+        for upload in uploads:
+            source_id = str(uuid4())
+            original_name = upload.filename or "unnamed"
+            safe_name = f"{source_id}_{original_name}"
+            # Dateigröße prüfen
+            content = await upload.read()
+            if len(content) > MAX_UPLOAD_BYTES:
+                raise HTTPException(
+                    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                    detail=f"Datei {original_name} überschreitet die maximale Größe von {MAX_UPLOAD_BYTES} Bytes.",
+                )
+            # Dateityp prüfen: TXT, MD, DOCX, PDF
+            lower = original_name.lower()
+            allowed_ext = (".txt", ".md", ".docx", ".pdf")
+            if not lower.endswith(allowed_ext):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Unsupported file extension for {original_name}",
+                )
+            # Pfade vorbereiten
+            project_dir = os.path.join(UPLOAD_DIR, project_id)
+            os.makedirs(project_dir, exist_ok=True)
+            file_path = os.path.join(project_dir, safe_name)
+            # Datei speichern
+            try:
+                with open(file_path, "wb") as f:
+                    f.write(content)
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Failed to save file {original_name}: {exc}",
+                )
+            # Text extrahieren
+            status_str, reason, text_len = _extract_text_from_content(original_name, content)
+            # Metadaten in DB speichern
+            crud.create_source_record(
+                db=db,
+                project_id=project_id,
+                source_id=source_id,
                 filename=original_name,
-                status=status_str,
-                reason=reason,
+                content_type=upload.content_type or "application/octet-stream",
+                size_bytes=len(content),
+                storage_path=file_path,
+                tags=tag_list or [],
+                extraction_status=status_str,
+                extraction_reason=reason,
                 extracted_text_len=text_len,
             )
-        )
-    return responses
+            # Optional: In-Memory-Store aktualisieren (Kompatibilität)
+            meta = {
+                "id": source_id,
+                "project_id": project_id,
+                "filename": original_name,
+                "stored_filename": safe_name,
+                "content_type": upload.content_type,
+                "size_bytes": len(content),
+                "status": status_str,
+                "reason": reason,
+                "extracted_text_len": text_len,
+                "tags": tag_list,
+                "created_at": datetime.utcnow(),
+                "updated_at": datetime.utcnow(),
+            }
+            sources_store.setdefault(project_id, {})[source_id] = meta
+            responses.append(
+                SourceUploadResponse(
+                    id=source_id,
+                    filename=original_name,
+                    status=status_str,
+                    reason=reason,
+                    extracted_text_len=text_len,
+                )
+            )
+        return responses
+    finally:
+        try:
+            db.close()
+        except Exception:
+            pass

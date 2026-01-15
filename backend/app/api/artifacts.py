@@ -353,15 +353,39 @@ def get_version_summary(
     v = crud.get_version(db, artifact_id, version)
     if v is None:
         raise HTTPException(status_code=404, detail="Version not found")
+    # Sonderfall: Version 1 – keine Änderungen, da es keinen Vorgänger gibt.
+    # Um irreführende Summaries (added_count=Zeilenanzahl etc.) zu vermeiden, liefern wir 0/0/[] zurück.
+    if version <= 1:
+        return ArtifactChangeSummaryOut(version=version, added_count=0, removed_count=0, changed_sections=[])
     # hole Vorgängerversion (version-1). Falls nicht vorhanden, leeren String verwenden
-    prev = crud.get_version(db, artifact_id, version - 1) if version > 1 else None
+    prev = crud.get_version(db, artifact_id, version - 1)
     prev_md = prev.content_md if prev else ""
     new_md = v.content_md or ""
+    # Normalisiere Markdown-Zeilen, um rein formatbedingte Unterschiede (mehrere Leerzeilen,
+    # trailing Spaces) zu ignorieren. Mehrere Leerzeilen werden auf eine reduziert.
+    def _normalize_lines(md: str) -> list[str]:
+        lines = md.splitlines()
+        normalized: list[str] = []
+        blank = False
+        for l in lines:
+            stripped = l.rstrip()
+            if stripped == "":
+                # Erlaube maximal eine aufeinanderfolgende Leerzeile
+                if not blank:
+                    normalized.append("")
+                    blank = True
+                continue
+            normalized.append(stripped)
+            blank = False
+        return normalized
+
+    prev_lines = _normalize_lines(prev_md)
+    new_lines = _normalize_lines(new_md)
     # diff ermitteln
     added = 0
     removed = 0
     changed_sections = set()
-    for line in difflib.ndiff(prev_md.splitlines(), new_md.splitlines()):
+    for line in difflib.ndiff(prev_lines, new_lines):
         if line.startswith("+ "):
             added += 1
             content = line[2:].strip()

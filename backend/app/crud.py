@@ -93,7 +93,18 @@ def create_source_record(
     size_bytes: int,
     storage_path: str,
     tags: list[str],
+    extraction_status: str = "unknown",
+    extraction_reason: str | None = None,
+    extracted_text_len: int = 0,
 ) -> SourceDocument:
+    """Erzeugt einen neuen SourceDocument‑Datensatz und speichert ihn in der DB.
+
+    Der Parameter ``extraction_status`` gibt den Status der Textextraktion an
+    (``ok``, ``partial``, ``error`` oder ``unknown``). ``extraction_reason``
+    enthält eine optionale Fehlermeldung, und ``extracted_text_len`` gibt die
+    Länge des extrahierten Textes an. Diese Felder werden in Block 17
+    benötigt, um Upload‑Metadaten persistieren zu können.
+    """
     src = SourceDocument(
         id=source_id,
         project_id=project_id,
@@ -104,6 +115,9 @@ def create_source_record(
         storage_path=storage_path,
         tags_json=tags_to_json(tags),
         status="stored",
+        extraction_status=extraction_status,
+        extraction_reason=extraction_reason,
+        extracted_text_len=extracted_text_len,
     )
     db.add(src)
     db.commit()
