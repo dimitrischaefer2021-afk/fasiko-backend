@@ -34,6 +34,7 @@ from ..schemas import (
     OpenPointOut,
     ArtifactEditRequest,
     ArtifactEditOut,
+    ArtifactChangeSummaryOut,
 )
 from .. import generator
 
@@ -326,3 +327,116 @@ async def edit_artifact(
         diff=diff_text,
         new_content_md=new_md,
     )
+
+
+# ---- Versions‑Zusammenfassung, Apply & Reject (Block 16) ----
+
+@router.get("/{artifact_id}/versions/{version}/summary", response_model=ArtifactChangeSummaryOut)
+def get_version_summary(
+    project_id: str,
+    artifact_id: str,
+    version: int,
+    db: Session = Depends(get_db),
+) -> ArtifactChangeSummaryOut:
+    """Liefert eine Zusammenfassung der Änderungen dieser Version.
+
+    Die Zusammenfassung umfasst die Anzahl der hinzugefügten und
+    entfernten Zeilen sowie die Überschriften (Abschnitte), die sich
+    geändert haben. Verglichen wird die angegebene Version mit ihrer
+    Vorgängerversion. Existiert keine Vorgängerversion, wird der
+    Vergleich mit einem leeren Dokument durchgeführt.
+    """
+    _ensure_project(db, project_id)
+    art = crud.get_artifact(db, project_id, artifact_id)
+    if art is None:
+        raise HTTPException(status_code=404, detail="Artifact not found")
+    v = crud.get_version(db, artifact_id, version)
+    if v is None:
+        raise HTTPException(status_code=404, detail="Version not found")
+    # hole Vorgängerversion (version-1). Falls nicht vorhanden, leeren String verwenden
+    prev = crud.get_version(db, artifact_id, version - 1) if version > 1 else None
+    prev_md = prev.content_md if prev else ""
+    new_md = v.content_md or ""
+    # diff ermitteln
+    added = 0
+    removed = 0
+    changed_sections = set()
+    for line in difflib.ndiff(prev_md.splitlines(), new_md.splitlines()):
+        if line.startswith("+ "):
+            added += 1
+            content = line[2:].strip()
+            if content.startswith("##"):
+                # Abschnittsüberschrift extrahieren (## bis Zeilenende)
+                heading = content.lstrip("#").strip()
+                if heading:
+                    changed_sections.add(heading)
+        elif line.startswith("- "):
+            removed += 1
+            content = line[2:].strip()
+            if content.startswith("##"):
+                heading = content.lstrip("#").strip()
+                if heading:
+                    changed_sections.add(heading)
+    return ArtifactChangeSummaryOut(
+        version=version,
+        added_count=added,
+        removed_count=removed,
+        changed_sections=sorted(changed_sections),
+    )
+
+
+@router.post("/{artifact_id}/versions/{version}/apply")
+def apply_version(
+    project_id: str,
+    artifact_id: str,
+    version: int,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Setzt die angegebene Version als aktuelle Version des Artefakts.
+
+    Dieser Endpunkt entspricht einem expliziten „Übernehmen“ der
+    Änderungen. Existiert die Version oder das Artefakt nicht,
+    wird 404 zurückgegeben. Wenn die angegebene Version bereits
+    aktuell ist, bleibt alles unverändert.
+    """
+    _ensure_project(db, project_id)
+    art = crud.get_artifact(db, project_id, artifact_id)
+    if art is None:
+        raise HTTPException(status_code=404, detail="Artifact not found")
+    v = crud.get_version(db, artifact_id, version)
+    if v is None:
+        raise HTTPException(status_code=404, detail="Version not found")
+    if art.current_version == version:
+        return {"status": "ok", "current_version": version}
+    ok = crud.set_current_version(db, artifact_id, version)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Version not found")
+    return {"status": "ok", "current_version": version}
+
+
+@router.post("/{artifact_id}/versions/{version}/reject")
+def reject_version(
+    project_id: str,
+    artifact_id: str,
+    version: int,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Verwirft die angegebene Version.
+
+    Dieser Endpunkt löscht die Version nicht, sondern markiert sie
+    implizit als verworfen, indem sie nicht als aktuelle Version gesetzt wird.
+    Die Version bleibt in der Historie erhalten. Wenn Sie eine echte
+    Löschung wünschen, kann dies in zukünftigen Blöcken ergänzt werden.
+    """
+    _ensure_project(db, project_id)
+    art = crud.get_artifact(db, project_id, artifact_id)
+    if art is None:
+        raise HTTPException(status_code=404, detail="Artifact not found")
+    v = crud.get_version(db, artifact_id, version)
+    if v is None:
+        raise HTTPException(status_code=404, detail="Version not found")
+    # Wenn es die aktuelle Version ist, kann sie nicht verworfen werden
+    if art.current_version == version:
+        raise HTTPException(status_code=400, detail="Cannot reject the current version")
+    # keine Aktion notwendig – Version bleibt unverändert
+    return {"status": "rejected", "rejected_version": version}

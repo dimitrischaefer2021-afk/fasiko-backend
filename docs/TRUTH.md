@@ -304,3 +304,33 @@ einsehen. Bei „generate“ liefert das Ergebnis die IDs der erzeugten
 Artefakte, ihre Versionsnummern und die IDs der erzeugten offenen
 Punkte. Bei „edit“ liefert das Ergebnis die neue Versionsnummer und den
 Unified‑Diff.
+
+Apply/Reject und Änderungszusammenfassung (Block 16)
+
+Block 16 erweitert das Versionsmanagement um explizites Übernehmen
+(Apply) und Verwerfen (Reject) neuer Versionen sowie um eine
+Zusammenfassung der Änderungen zwischen Versionen.
+	•	Version‑Zusammenfassung: Über den Endpunkt
+GET /api/v1/projects/{project_id}/artifacts/{artifact_id}/versions/{version}/summary
+können Nutzer sich vor dem Übernehmen einen Überblick verschaffen. Die
+Antwort liefert added_count (hinzugefügte Zeilen), removed_count
+(entfernte Zeilen) und changed_sections (Liste geänderter
+Markdown‑Abschnitte). Vergleichsbasis ist jeweils die Vorgängerversion
+oder ein leeres Dokument bei Version 1.
+	•	Apply: Mit
+POST /api/v1/projects/{project_id}/artifacts/{artifact_id}/versions/{version}/apply
+wird eine Version als aktuelle Version gesetzt. Dies ersetzt
+bestehende Inhalte nicht still, sondern erfolgt explizit. Wenn die
+Version bereits aktuell ist, passiert nichts.
+	•	Reject: Mit
+POST /api/v1/projects/{project_id}/artifacts/{artifact_id}/versions/{version}/reject
+kann eine Version verworfen werden. Die Version bleibt in der
+Historie erhalten, wird aber nicht zur aktuellen Version gemacht. Das
+Verwerfen der aktuellen Version ist nicht erlaubt. Eine echte
+Löschfunktion ist für spätere Blöcke vorgesehen.
+
+Diese Erweiterung schließt den Versionslebenszyklus: Generierung
+erstellt eine neue Version, die über die Bearbeitungsendpunkte
+angepasst werden kann. Der Nutzer entscheidet anschließend anhand
+einer diff‑basierten Zusammenfassung, ob die Änderungen übernommen
+oder verworfen werden sollen.

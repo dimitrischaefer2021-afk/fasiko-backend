@@ -473,6 +473,32 @@ class JobOut(BaseModel):
         description="Ergebnisdaten des Jobs (z. B. generierte Artefakte oder editierte Version)",
     )
 
+# -------- Versions‑Änderungen und Apply/Reject (Block 16) --------
+
+class ArtifactChangeSummaryOut(BaseModel):
+    """Zusammenfassung der Änderungen zwischen zwei Versionen.
+
+    Dieses Modell gibt die Anzahl der hinzugefügten und entfernten Zeilen
+    sowie eine Liste der geänderten Abschnitte (basierend auf
+    Markdown‑Überschriften) zurück. Es dient dazu, dem Nutzer einen
+    schnellen Überblick vor dem Übernehmen oder Verwerfen einer neuen
+    Version zu geben.
+    """
+
+    version: int = Field(
+        ..., description="Version, für die die Zusammenfassung berechnet wurde"
+    )
+    added_count: int = Field(
+        ..., description="Anzahl der hinzugefügten Zeilen"
+    )
+    removed_count: int = Field(
+        ..., description="Anzahl der entfernten Zeilen"
+    )
+    changed_sections: list[str] = Field(
+        default_factory=list,
+        description="Liste der geänderten Abschnittsüberschriften (Markdown)",
+    )
+
 # -------- BSI‑Bausteine (Block 11) --------
 
 class BsiGenerateRequest(BaseModel):

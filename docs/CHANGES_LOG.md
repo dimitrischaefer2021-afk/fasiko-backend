@@ -287,3 +287,10 @@ Liste der offenen Fragen unter „## Offene Punkte“ einzufügen.
 Bearbeitung (Block 15)“ beschreibt die neuen Job‑Typen,
 Versionierungslogik, erweiterte Open‑Point‑Erkennung und das
 Editor‑Prompt.
+
+Block 16 – Apply/Reject & Änderungszusammenfassung
+•   Neue Endpunkte in backend/app/api/artifacts.py:
+* GET /api/v1/projects/{project_id}/artifacts/{artifact_id}/versions/{version}/summary berechnet die Anzahl hinzugefügter und entfernten Zeilen sowie eine Liste geänderter Abschnitte (basierend auf Markdown‑Überschriften). Die Vergleichsbasis ist die Vorgängerversion.
+* POST /apply und POST /reject unter demselben Pfad setzen eine Version explizit als aktuelle Version oder verwerfen sie. Verwerfen der aktuellen Version ist nicht erlaubt. Ein Löschen verworfener Versionen wird optional in späteren Blöcken ergänzt.
+•   Neues Schema ArtifactChangeSummaryOut in backend/app/schemas.py definiert die Struktur der Zusammenfassung (Version, added_count, removed_count, changed_sections).
+•   Anpassung TRUTH.md: Abschnitt „Apply/Reject und Änderungszusammenfassung (Block 16)“ erläutert die neuen Funktionen und den Lebenszyklus einer Version.
