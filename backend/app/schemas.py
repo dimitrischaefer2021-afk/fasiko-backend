@@ -375,24 +375,55 @@ class ChatAssistantReplyOut(BaseModel):
 class JobCreate(BaseModel):
     """Anforderung zur Erstellung eines Jobs.
 
-    Unterstützt wird derzeit nur der Job‑Typ ``export``. Für einen Export
-    müssen die ``artifact_ids`` angegeben werden, also eine Liste der
-    zu exportierenden Artefakt‑IDs. Optional kann ein ``format``
-    angegeben werden, um das Zielformat festzulegen. Erlaubte Werte
-    sind ``txt`` (Standard), ``docx`` oder ``pdf``. Andere Werte
-    führen zu einer Fehlermeldung.
+    Unterstützte Typen:
+
+    * ``export`` – Exportiert ausgewählte Artefakte in ein bestimmtes Format
+      (txt, docx, pdf). Es müssen ``artifact_ids`` angegeben werden.
+    * ``generate`` – Generiert ein oder mehrere Artefakte für ein Projekt.
+      Es müssen ``project_id`` und ``types`` angegeben werden.
+    * ``edit`` – Bearbeitet ein bestehendes Artefakt über das LLM. Es müssen
+      ``project_id``, ``artifact_id`` und ``instructions`` angegeben werden.
+
+    Je nach Job‑Typ sind unterschiedliche Felder erforderlich. Nicht
+    benötigte Felder können weggelassen werden.
     """
 
     type: str = Field(
         ...,
-        description="Typ des Jobs (nur 'export' wird unterstützt)",
+        description="Typ des Jobs (export, generate, edit)",
         example="export",
     )
+    # Allgemeine Parameter
+    project_id: Optional[str] = Field(
+        default=None,
+        description="ID des Projekts (für generate und edit erforderlich)",
+        example="01234567-89ab-cdef-0123-456789abcdef",
+    )
+    # Für generate: Liste der zu generierenden Artefakt‑Typen
+    types: Optional[List[str]] = Field(
+        default=None,
+        description="Liste der Artefakt‑Typen für die Generierung (nur für type='generate')",
+        example=["strukturanalyse", "schutzbedarf"],
+    )
+    # Für edit: ID des Artefakts
+    artifact_id: Optional[str] = Field(
+        default=None,
+        description="ID des zu bearbeitenden Artefakts (nur für type='edit')",
+        example="c8276e78-74f3-4c82-bb38-576ea1fc7861",
+    )
+    # Für edit: Bearbeitungsanweisung
+    instructions: Optional[str] = Field(
+        default=None,
+        description="Bearbeitungsanweisung für das Dokument (nur für type='edit')",
+        example="Fasse das Dokument kurz zusammen.",
+    )
+    # Für export: Liste der zu exportierenden Artefakt‑IDs
     artifact_ids: List[str] = Field(
         default_factory=list,
-        description="Liste der zu exportierenden Artefakt‑IDs",
+        description="Liste der zu exportierenden Artefakt‑IDs (nur für type='export')",
         example=["c8276e78-74f3-4c82-bb38-576ea1fc7861"],
     )
+    # Für export: Zielformat
     format: Optional[str] = Field(
         default="txt",
         description="Zielformat der exportierten Dateien (txt, docx, pdf)",
@@ -418,6 +449,9 @@ class JobStatus(BaseModel):
     created_at: datetime
     completed_at: Optional[datetime]
 
+    # optionale Ergebnisdaten (z. B. generierte Artefakte oder neue Version)
+    result_data: Optional[dict] = None
+
 
 class JobOut(BaseModel):
     """Antwortobjekt für Job‑Endpunkte.
@@ -433,6 +467,11 @@ class JobOut(BaseModel):
     progress: float
     result_file: Optional[str]
     error: Optional[str]
+
+    result_data: Optional[dict] = Field(
+        default=None,
+        description="Ergebnisdaten des Jobs (z. B. generierte Artefakte oder editierte Version)",
+    )
 
 # -------- BSI‑Bausteine (Block 11) --------
 

@@ -388,8 +388,11 @@ async def generate_artifact_content(
     lines: List[str] = []
     for line in filtered_lines:
         stripped = line.strip()
-        if stripped.startswith("OFFENE_FRAGE:"):
-            rest = stripped[len("OFFENE_FRAGE:"):].strip()
+        # entferne optionales führendes "-" und Leerzeichen, um auch Zeilen wie "- OFFENE_FRAGE:" zu erkennen
+        no_prefix = stripped.lstrip("-").strip()
+        if no_prefix.startswith("OFFENE_FRAGE:"):
+            # Texte wie "OFFENE_FRAGE: Kategorie; Frage" in Kategorie und Frage aufteilen
+            rest = no_prefix[len("OFFENE_FRAGE:"):].strip()
             category, question = None, None
             if ";" in rest:
                 cat_part, ques_part = rest.split(";", 1)
@@ -399,6 +402,7 @@ async def generate_artifact_content(
                 question = rest or None
             if question:
                 open_points.append({"category": category, "question": question})
+            # offene Fragen werden nicht in den Dokumenteninhalt übernommen
         else:
             lines.append(line)
 
@@ -434,9 +438,11 @@ async def edit_artifact_content(instructions: str, current_md: str) -> str:
     system_message = {
         "role": "system",
         "content": (
-            "Du bist ein professioneller Redakteur für IT‑Grundschutz‑" \
-            "Dokumente. Überarbeite den gegebenen Markdown‑Text gemäß " \
-            "der Anweisung und liefere ausschließlich den neuen Markdown‑Text. " \
+            "Du bist ein professioneller Redakteur für IT‑Grundschutz‑Dokumente. "
+            "Überarbeite den gegebenen Markdown‑Text gemäß der Anweisung und liefere ausschließlich den neuen Markdown‑Text. "
+            "Entferne keine Zeilen, die mit 'OFFENE_FRAGE:' beginnen. "
+            "Erhalte die vorhandene Struktur und füge keine neuen Fakten hinzu. "
+            "Füge am Ende des überarbeiteten Textes eine Liste aller ursprünglichen 'OFFENE_FRAGE'-Zeilen unter der Überschrift '## Offene Punkte' ein. "
             "Füge keine zusätzlichen Erklärungen hinzu."
         ),
     }

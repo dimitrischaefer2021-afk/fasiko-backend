@@ -248,3 +248,42 @@ difflib.unified_diff erzeugt, um die Änderungen darzustellen.
 •   Updated TRUTH.md: Ein neuer Abschnitt „Artefakt‑Bearbeitung (Block 14)“
 beschreibt Zweck, Endpunkt, Versionierung und Fallback der neuen
 Bearbeitungsfunktion.
+
+Block 15 – LLM‑Jobs, Generierung & Bearbeitung
+•   Job‑Service erweitert: POST /api/v1/jobs unterstützt jetzt die
+Typen generate und edit zusätzlich zu export. Der Jobtyp
+generate erzeugt Artefakte für ein Projekt; edit bearbeitet ein
+bestehendes Artefakt mit dem 8B‑Modell. Die Jobs laufen asynchron
+über FastAPI‑BackgroundTasks, der Status und das Ergebnis können
+über GET /api/v1/jobs/{job_id} abgerufen werden. Ergebnisdaten
+werden in result_data gespeichert.
+•   Neue Background‑Funktionen: In backend/app/api/jobs.py wurden die
+Funktionen _run_generate_job und _run_edit_job implementiert.
+_run_generate_job generiert Inhalte per LLM, legt Artefakte mit
+Version 1 an (anstatt zunächst eine leere Version) und speichert
+offene Fragen. _run_edit_job ruft das 8B‑Modell mit einer
+angepassten Systemanweisung auf, legt eine neue Version ohne
+automatisches Setzen als aktuelle Version an und berechnet einen
+Unified‑Diff.
+•   Anpassungen der Schemas: JobCreate unterstützt jetzt die Felder
+project_id, types, artifact_id, instructions, artifact_ids und
+format, abhängig vom Job‑Typ. JobStatus und JobOut wurden um
+das Feld result_data erweitert, um Ergebnisdaten wie erzeugte
+Artefakte oder die neue Version zu transportieren.
+•   Anpassung der Generierung: Im Endpunkt
+POST /api/v1/projects/{project_id}/artifacts/generate wird bei
+erstmaliger Generierung eines Artefakts das generierte Dokument
+direkt als Version 1 gespeichert. Die früher verwendete leere
+Version entfällt, wodurch die initiale Versionsnummer korrekt ist.
+•   Verbesserte Open‑Point‑Erkennung: Zeilen, die mit „- OFFENE_FRAGE:“
+beginnen, werden jetzt ebenfalls als offene Punkte erkannt und aus
+dem generierten Dokument entfernt.
+•   Angepasstes Editor‑Prompt: Das System‑Prompt für die Funktion
+edit_artifact_content wurde erweitert. Es weist das Modell an,
+OFFENE_FRAGE‑Zeilen nicht zu entfernen, keine neuen Fakten zu
+erfinden, die bestehende Struktur zu erhalten und am Ende eine
+Liste der offenen Fragen unter „## Offene Punkte“ einzufügen.
+•   Updated TRUTH.md: Neuer Abschnitt „LLM‑Jobs, Generierung und
+Bearbeitung (Block 15)“ beschreibt die neuen Job‑Typen,
+Versionierungslogik, erweiterte Open‑Point‑Erkennung und das
+Editor‑Prompt.

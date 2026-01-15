@@ -214,20 +214,22 @@ async def generate_artifacts(
         }
         title = title_map.get(internal_type, internal_type)
 
-        # Prüfe, ob Artefakt bereits existiert
+        # Prüfe, ob Artefakt bereits existiert (Versionierung)
         existing: List = [a for a in crud.list_artifacts(db, project_id) if a.type == internal_type]
-        if existing:
-            art = existing[0]
-        else:
-            # Neues Artefakt anlegen (initiale Version wird mit leerem Inhalt erstellt)
-            art_payload = ArtifactCreate(type=internal_type, title=title, initial_content_md="", status="draft")
-            art = crud.create_artifact(db, project_id, art_payload)
 
         # LLM aufrufen, um Inhalt und offene Punkte zu generieren
         content_md, open_points_raw = await generator.generate_artifact_content(internal_type, project_name)
 
-        # Neue Version erzeugen (macht sie automatisch zur aktuellen Version)
-        version = crud.create_version(db, art.id, ArtifactVersionCreate(content_md=content_md, make_current=True))
+        if existing:
+            # Artefakt existiert bereits – neue Version erzeugen und current setzen
+            art = existing[0]
+            version = crud.create_version(db, art.id, ArtifactVersionCreate(content_md=content_md, make_current=True))
+        else:
+            # Artefakt existiert nicht – direkt mit generiertem Inhalt anlegen (Version 1)
+            art_payload = ArtifactCreate(type=internal_type, title=title, initial_content_md=content_md, status="draft")
+            art = crud.create_artifact(db, project_id, art_payload)
+            # Version 1 ist automatisch aktuell
+            version = crud.get_current_version(db, art.id, art.current_version)
 
         # Offene Punkte persistieren
         open_points_out: List[OpenPointOut] = []

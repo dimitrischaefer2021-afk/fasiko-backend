@@ -252,3 +252,55 @@ Diese Erweiterung ermöglicht iteratives Arbeiten am Dokument, ohne die
 Ausgangsversion zu verlieren. Die Bearbeitung ist auf das kleine Modell
 beschränkt; der Einsatz des 70B‑Modells ist weiterhin ausschließlich
 für die initiale Generierung reserviert.
+
+LLM‑Jobs, Generierung und Bearbeitung (Block 15)
+
+In Block 15 wurde der Job‑Service erweitert und die Generierung sowie
+Bearbeitung von Artefakten verbessert. Ziel ist es, langlaufende
+Operationen wie LLM‑Generierung und ‑Bearbeitung als asynchrone Jobs
+über den bestehenden Job‑Service auszuführen und gleichzeitig die
+Qualität der Dokumente zu erhöhen.
+	•	Job‑Typen: Der Endpunkt POST /api/v1/jobs unterstützt jetzt drei
+Typen:
+	•	export – unverändert, erstellt ZIP‑Archive für Artefakte.
+	•	generate – generiert ein oder mehrere Artefakte für ein Projekt. Es
+sind project_id und types (Liste der Artefakt‑Typen) anzugeben.
+Das System ruft für jeden Typ das LLM auf und erstellt das Artefakt
+mit Version 1 direkt mit dem generierten Inhalt. Existiert das
+Artefakt bereits, wird eine neue Version erstellt und als aktuelle
+Version markiert. Offene Fragen werden erkannt und als Open Points
+gespeichert.
+	•	edit – bearbeitet ein vorhandenes Artefakt. Es sind project_id,
+artifact_id und instructions anzugeben. Das LLM (8B) erhält
+Anweisung und den aktuellen Inhalt, entfernt keine
+OFFENE_FRAGE‑Zeilen, behält die Struktur bei und fügt alle
+offenen Fragen unter einer eigenen Überschrift „Offene Punkte“ am
+Ende ein. Neue Fakten dürfen nicht erfunden werden. Die Bearbeitung
+erzeugt eine neue Version, die nicht automatisch als aktuelle
+Version gesetzt wird. Der Job liefert die neue Versionsnummer und
+einen Unified‑Diff zurück.
+	•	Versionierung bei Generierung: Wenn ein Artefakt zum ersten Mal
+generiert wird, speichert das System den generierten Inhalt direkt in
+Version 1. Die zuvor verwendete leere Version 1 entfällt damit. Bei
+erneuter Generierung wird wie gewohnt eine neue Version erstellt
+(Version 2, 3, …) und als aktuelle Version gesetzt. Dieses Verhalten
+stellt sicher, dass es keine leere Vorgängerversion mehr gibt.
+	•	Erweiterte Open‑Point‑Erkennung: Bei der Generierung werden jetzt
+auch Zeilen erkannt, die mit „- OFFENE_FRAGE:“ beginnen. Diese
+Varianten treten in den Vorlagen als Aufzählungspunkte auf. Sie
+werden aus dem generierten Inhalt entfernt und als offene Punkte
+persistiert.
+	•	Bearbeitungs‑Prompt: Das Editor‑Prompt wurde angepasst, damit das
+kleine Modell OFFENE_FRAGE‑Zeilen nicht entfernt, die Struktur
+beibehält und keine neuen Fakten erfindet. Zusätzlich wird am Ende
+automatisch eine Liste aller offenen Fragen unter der Überschrift
+„## Offene Punkte“ eingefügt.
+
+Diese Erweiterungen sorgen dafür, dass Generierungen und Bearbeitungen
+skalierbar über Jobs ausgeführt werden können und die entstehenden
+Dokumente qualitativ hochwertig bleiben. Nutzer können den
+Fortschritt und das Ergebnis eines Jobs über GET /api/v1/jobs/{job_id}
+einsehen. Bei „generate“ liefert das Ergebnis die IDs der erzeugten
+Artefakte, ihre Versionsnummern und die IDs der erzeugten offenen
+Punkte. Bei „edit“ liefert das Ergebnis die neue Versionsnummer und den
+Unified‑Diff.
