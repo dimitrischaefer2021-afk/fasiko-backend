@@ -53,8 +53,8 @@ Block 07 – Job‑Service und Export
 – GET /api/v1/jobs/{job_id} gibt den Status eines Jobs zurück. Neben status und progress wird – nach erfolgreichem Abschluss – der Name der erzeugten ZIP‑Datei ausgegeben. Bei Fehlern enthält die Antwort ein error‑Feld.
 •   Neue Schemas: JobCreate, JobStatus und JobOut in backend/app/schemas.py. Diese Modelle beschreiben die Eingabe- und Ausgabestruktur der Job‑API und dienen dem in‑memory Job‑Store.
 •   Job‑Implementierung: Das Export‑Back‑End erstellt für jede Artefakt‑ID eine einfache Textdatei mit Platzhalterinhalt und packt alle Dateien zu einem ZIP‑Archiv (Name = {job_id}.zip). Das Archiv wird im Verzeichnis EXPORT_DIR gespeichert. Fortschritt (progress) und Status werden laufend aktualisiert. Fehler führen zu status=failed und einem Eintrag im error‑Feld.
-•   Erweiterungen in backend/app/api/__init__.py: Der neue jobs_router wird beim Erstellen des API‑Routers automatisch hinzugefügt.
-•   Ergänzung in backend/app/schemas.py: Import von datetime und Definition der neuen Job‑Modelle. Das __all__‑Tuple wurde angepasst.
+•   Erweiterungen in backend/app/api/init.py: Der neue jobs_router wird beim Erstellen des API‑Routers automatisch hinzugefügt.
+•   Ergänzung in backend/app/schemas.py: Import von datetime und Definition der neuen Job‑Modelle. Das all‑Tuple wurde angepasst.
 •   Erweiterungen in docs/TRUTH.md: Neuer Abschnitt „Jobs und Export (Block 07)“ beschreibt den Zweck des Job‑Services, die API‑Endpunkte und das Export‑Verfahren.
 
 Block 08 – Export‑Download
@@ -150,7 +150,7 @@ Ausgabeformate der BSI‑API.
 •   Aktualisierung von backend/app/main.py: Der bsi_router wird
 neben den bestehenden Routern (Health, Ready, Jobs, Export) unter
 /api/v1 registriert.
-•   Anpassungen in backend/app/api/__init__.py: Der BSI‑Router
+•   Anpassungen in backend/app/api/init.py: Der BSI‑Router
 und der Export‑Router werden in get_api_router eingebunden.
 •   docs/TRUTH.md erweitert: Ein neuer Abschnitt „BSI‑Baustein‑Bewertung
 (Block 11)“ beschreibt Zweck, Endpunkte und Nutzung des neuen Moduls.
@@ -180,7 +180,7 @@ Informationen führen zu offenen Fragen. Ein internes
 Dictionary MODULE_MEASURES definiert exemplarisch die
 Maßnahmen je Baustein.
 •   Anpassungen in backend/app/schemas.py: Die oben genannten
-Klassen und ihre Importe wurden hinzugefügt; __all__
+Klassen und ihre Importe wurden hinzugefügt; all
 aktualisiert. Die bestehenden Baustein‑Schemas bleiben
 unverändert.
 •   docs/TRUTH.md erweitert: Ein Abschnitt “BSI‑Baustein‑Analyse
@@ -220,10 +220,31 @@ zu sammeln.
 backend/app/schemas.py hinzugefügt. Dieses Modell
 beschreibt die Antwort auf den Upload‑Endpoint (ID,
 Dateiname, Status, optionaler Grund, extrahierte Textlänge).
-•   Router‑Registrierung: backend/app/api/__init__.py und
+•   Router‑Registrierung: backend/app/api/init.py und
 backend/app/main.py wurden angepasst, um den neuen
 sources_router einzubinden. Dadurch ist der Upload‑Endpoint
 unter /api/v1 erreichbar.
 •   Dokumentation: docs/TRUTH.md wurde um einen Abschnitt
 „Projektquellen‑Upload (Block 13)“ ergänzt, der Zweck,
 Funktionsweise und Einschränkungen des Uploads erläutert.
+
+Block 14 – Artefakt‑Bearbeitung
+•   Neue Pydantic‑Modelle: In backend/app/schemas.py wurden die Klassen
+ArtifactEditRequest und ArtifactEditOut eingeführt. ArtifactEditRequest
+enthält die Bearbeitungsanweisung, und ArtifactEditOut liefert die
+neu erstellte Version, einen Unified‑Diff und den neuen Inhalt.
+•   Neuer LLM‑Aufruf: backend/app/generator.py implementiert jetzt die
+Funktion edit_artifact_content. Diese Funktion sendet eine System‑
+und Benutzeranweisung an das kleine Modell (llama3.1:8b) und gibt
+den überarbeiteten Markdown‑Text zurück. Bei Fehlern wird der
+ursprüngliche Inhalt zurückgegeben.
+•   Neuer API‑Endpunkt: Im Router backend/app/api/artifacts.py wurde der
+Pfad POST /api/v1/projects/{project_id}/artifacts/{artifact_id}/edit
+ergänzt. Der Endpunkt nimmt eine ArtifactEditRequest entgegen,
+ruft das LLM zur Bearbeitung auf, erstellt eine neue Version
+(make_current=False) und liefert ein ArtifactEditOut mit
+Version, diff und Inhalt zurück. Ein Unified‑Diff wird mit
+difflib.unified_diff erzeugt, um die Änderungen darzustellen.
+•   Updated TRUTH.md: Ein neuer Abschnitt „Artefakt‑Bearbeitung (Block 14)“
+beschreibt Zweck, Endpunkt, Versionierung und Fallback der neuen
+Bearbeitungsfunktion.

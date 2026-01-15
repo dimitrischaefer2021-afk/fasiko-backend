@@ -32,8 +32,12 @@ from ..schemas import (
     GeneratedArtifactOut,
     OpenPointCreate,
     OpenPointOut,
+    ArtifactEditRequest,
+    ArtifactEditOut,
 )
 from .. import generator
+
+import difflib
 
 router = APIRouter(prefix="/projects/{project_id}/artifacts", tags=["artifacts"])
 
@@ -272,3 +276,51 @@ async def generate_artifacts(
         )
 
     return ArtifactGenerateResponse(items=items)
+
+
+# ---- Bearbeitung bestehender Artefakte ----
+
+
+@router.post("/{artifact_id}/edit", response_model=ArtifactEditOut)
+async def edit_artifact(
+    project_id: str,
+    artifact_id: str,
+    payload: ArtifactEditRequest,
+    db: Session = Depends(get_db),
+) -> ArtifactEditOut:
+    """Bearbeitet ein bestehendes Artefakt gemäß einer Anweisung.
+
+    Es wird der aktuelle Markdown‑Inhalt des Dokuments an ein LLM (8B)
+    gesendet, das den Text entsprechend der Anweisung umschreibt. Das
+    Ergebnis wird als neue Version gespeichert (ohne sie automatisch
+    zur aktuellen Version zu machen). Zusätzlich liefert die Antwort
+    einen Unified‑Diff zur einfachen Nachvollziehbarkeit der Änderungen.
+    """
+    _ensure_project(db, project_id)
+    art = crud.get_artifact(db, project_id, artifact_id)
+    if art is None:
+        raise HTTPException(status_code=404, detail="Artifact not found")
+    # Hole den aktuellen Inhalt
+    cur = crud.get_current_version(db, art.id, art.current_version)
+    current_md = cur.content_md if cur else ""
+    if not current_md.strip():
+        raise HTTPException(status_code=400, detail="Current document is empty")
+    # Bearbeite über LLM
+    new_md = await generator.edit_artifact_content(payload.instructions, current_md)
+    # Erzeuge eine neue Version, aber setze sie nicht als current
+    version = crud.create_version(db, art.id, ArtifactVersionCreate(content_md=new_md, make_current=False))
+    # Berechne den Unified‑Diff
+    diff_lines = difflib.unified_diff(
+        current_md.splitlines(),
+        new_md.splitlines(),
+        fromfile=f"v{art.current_version}",
+        tofile=f"v{version.version}",
+        lineterm="",
+    )
+    diff_text = "\n".join(list(diff_lines))
+    # Baue Antwort
+    return ArtifactEditOut(
+        new_version=_to_version_out(version),
+        diff=diff_text,
+        new_content_md=new_md,
+    )

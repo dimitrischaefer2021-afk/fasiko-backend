@@ -154,6 +154,45 @@ class ArtifactVersionOut(BaseModel):
 class ArtifactVersionListOut(BaseModel):
     items: list[ArtifactVersionOut]
 
+# -------- Artefakt‑Bearbeitung (Block 14) --------
+
+class ArtifactEditRequest(BaseModel):
+    """Anforderung zur Bearbeitung eines Artefakts.
+
+    Enthält die Anweisungen, wie das bestehende Dokument
+    überarbeitet werden soll (z. B. „vereinfache die Sprache“ oder
+    „füge eine Zusammenfassung am Ende hinzu“). Der Inhalt des
+    aktuellen Dokuments wird vom Backend automatisch in den
+    LLM‑Prompt eingefügt. Bei leerem oder fehlendem Text
+    wird eine Fehlermeldung zurückgegeben.
+    """
+
+    instructions: str = Field(
+        min_length=1,
+        max_length=2000,
+        description="Bearbeitungsanweisung für das Dokument",
+    )
+
+
+class ArtifactEditOut(BaseModel):
+    """Antwort auf die Bearbeitung eines Artefakts.
+
+    Es wird eine neue Version des Dokuments erstellt (nicht
+    automatisch als aktuelle Version gesetzt). Zusätzlich enthält die
+    Antwort den Unified‑Diff zwischen der vorherigen und der neuen
+    Version sowie den vollständigen neuen Markdown‑Inhalt.
+    """
+
+    new_version: ArtifactVersionOut = Field(
+        ..., description="Die neu erstellte Version des Artefakts"
+    )
+    diff: str = Field(
+        ..., description="Unified‑Diff zwischen dem alten und dem neuen Inhalt"
+    )
+    new_content_md: str = Field(
+        ..., description="Der vollständige neue Inhalt des Dokuments als Markdown"
+    )
+
 
 class ArtifactVersionCreate(BaseModel):
     content_md: str = Field(default="")
@@ -577,4 +616,8 @@ __all__ = [
     "BsiMeasureEvaluation",
     "BsiEvaluationDetailOut",
     "BsiAnalyzeResponse",
+
+    # Artefakt‑Bearbeitung (Block 14)
+    "ArtifactEditRequest",
+    "ArtifactEditOut",
 ]

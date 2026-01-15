@@ -404,3 +404,57 @@ async def generate_artifact_content(
 
     content_md = "\n".join(lines).strip() or DEFAULT_TEMPLATES.get(artifact_type, "")
     return content_md, open_points
+
+
+async def edit_artifact_content(instructions: str, current_md: str) -> str:
+    """Bearbeitet vorhandenen Markdown‑Inhalt gemäß der angegebenen Anweisung.
+
+    Der Editor sendet die Anweisung zusammen mit dem aktuellen
+    Dokument an das kleine LLM‑Modell (llama3.1:8b). Das Modell
+    soll den gegebenen Text entsprechend überarbeiten und den
+    vollständigen neuen Markdown‑Inhalt zurückgeben. Tritt ein
+    Fehler bei der Kommunikation mit dem LLM auf, wird der
+    ursprüngliche Inhalt unverändert zurückgegeben.
+
+    Args:
+        instructions: Textuelle Anweisung für die Überarbeitung.
+        current_md: Der bestehende Markdown‑Inhalt des Dokuments.
+
+    Returns:
+        Der überarbeitete Inhalt als Markdown. Im Fehlerfall der
+        unveränderte aktuelle Inhalt.
+    """
+
+    # Baue die Nachrichten für das Chat‑LLM. Eine klare
+    # Systemrolle stellt sicher, dass das Modell im Editor‑Modus
+    # arbeitet und keine zusätzlichen Erläuterungen liefert. Die
+    # Benutzerrolle enthält Anweisung und vorhandenen Text getrennt
+    # durch eine klare Trennung, damit das Modell weiß, was es
+    # bearbeiten soll.
+    system_message = {
+        "role": "system",
+        "content": (
+            "Du bist ein professioneller Redakteur für IT‑Grundschutz‑" \
+            "Dokumente. Überarbeite den gegebenen Markdown‑Text gemäß " \
+            "der Anweisung und liefere ausschließlich den neuen Markdown‑Text. " \
+            "Füge keine zusätzlichen Erklärungen hinzu."
+        ),
+    }
+    user_message = {
+        "role": "user",
+        "content": (
+            f"Anweisung:\n{instructions}\n\n" \
+            "--- Aktueller Text ---\n" \
+            f"{current_md}"
+        ),
+    }
+    messages = [system_message, user_message]
+    try:
+        edited = await _call_ollama_chat(messages, MODEL_GENERAL_8B)
+        if not isinstance(edited, str) or not edited.strip():
+            # falls das LLM einen unerwarteten Typ liefert
+            return current_md
+        return edited.strip()
+    except Exception:
+        # Fallback: unveränderter Inhalt
+        return current_md

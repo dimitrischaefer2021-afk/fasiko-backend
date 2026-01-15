@@ -165,35 +165,34 @@ Patchmanagement) sind exemplarisch im Code hinterlegt und sollen in
 einer späteren Version aus offiziellen Quellen geladen werden.
 Für jede Maßnahme wird ein Status ermittelt:
 
-•   ``erfüllt`` – wenn die Anforderung vollständig in den
-    Projektquellen nachgewiesen wird.
-•   ``teilweise`` – wenn einige, aber nicht alle Schlüsselwörter
-    gefunden werden.
-•   ``offen`` – wenn kein Hinweis gefunden wird; in diesem Fall
-    wird eine konkrete offene Frage formuliert, die als Open Point
-    aufgeführt wird.
+•   erfüllt – wenn die Anforderung vollständig in den
+Projektquellen nachgewiesen wird.
+•   teilweise – wenn einige, aber nicht alle Schlüsselwörter
+gefunden werden.
+•   offen – wenn kein Hinweis gefunden wird; in diesem Fall
+wird eine konkrete offene Frage formuliert, die als Open Point
+aufgeführt wird.
 
 Das Ergebnis der Analyse ist ein neues Schema
-``BsiEvaluationDetailOut``, das den aggregierten Status pro
-Baustein (``erfüllt``, ``teilweise`` oder ``offen``), die Liste der
+BsiEvaluationDetailOut, das den aggregierten Status pro
+Baustein (erfüllt, teilweise oder offen), die Liste der
 Einzelmaßnahmen und deren Nachweise sowie alle offenen Fragen
 enthält. Die KI‑Analyse ändert nichts an den manuellen
 Bewertungen (Block 11); sie liefert zusätzliche Informationen,
 die beim späteren Ausfüllen der Offenen Punkte helfen können. Die
-Analyse greift **niemals** auf externe Daten oder das Internet zu,
+Analyse greift niemals auf externe Daten oder das Internet zu,
 sondern wertet nur die hochgeladenen Projektquellen aus. Für
 nicht unterstützte Dateitypen (z. B. PDF) wird aktuell kein Text
 extrahiert; diese Dateien fließen erst dann in die Analyse ein,
 wenn ein entsprechender Parser implementiert wurde.
 
-**Hinweis zu unbekannten Bausteinen:** Wenn ein Bausteincode in
+Hinweis zu unbekannten Bausteinen: Wenn ein Bausteincode in
 der aktuellen Implementierung nicht im internen Maßnahmenkatalog
-(``MODULE_MEASURES``) hinterlegt ist, wird der Baustein automatisch
-mit dem Status ``offen`` bewertet. In diesem Fall wird eine
-entsprechende offene Frage (z. B. ``Baustein SYS.3.2.2 ist nicht im
-Katalog definiert. Bitte ergänzen Sie die Maßnahmen.``) als Open
+(MODULE_MEASURES) hinterlegt ist, wird der Baustein automatisch
+mit dem Status offen bewertet. In diesem Fall wird eine
+entsprechende offene Frage (z. B. Baustein SYS.3.2.2 ist nicht im Katalog definiert. Bitte ergänzen Sie die Maßnahmen.) als Open
 Point zurückgegeben. Dieses Verhalten verhindert fälschlicherweise
-den Status ``erfüllt`` bei nicht definierten Bausteinen und macht
+den Status erfüllt bei nicht definierten Bausteinen und macht
 transparent, dass eine Definition der Maßnahmen fehlt.
 
 Projektquellen‑Upload (Block 13)
@@ -207,20 +206,49 @@ Umgebungsvariable konfiguriert ist (Standard: /data/uploads).
 
 Für jede Datei wird eine einfache Textextraktion durchgeführt, um
 Inhalte für die BSI‑Analyse verfügbar zu machen:
-    • **TXT/MD** – der gesamte Text wird direkt aus dem Upload gelesen.
-    • **DOCX** – der Text wird mithilfe der Bibliothek
-      ``python‑docx`` extrahiert.
-    • **PDF** – die Datei wird gespeichert, die Extraktion ist jedoch
-      noch nicht implementiert (Status = ``partial``). Diese Dateien
-      fließen in die Analyse ein, sobald ein Parser ergänzt wird.
-Die Ergebnisse der Extraktion werden als ``SourceUploadResponse``
+• TXT/MD – der gesamte Text wird direkt aus dem Upload gelesen.
+• DOCX – der Text wird mithilfe der Bibliothek
+python‑docx extrahiert.
+• PDF – die Datei wird gespeichert, die Extraktion ist jedoch
+noch nicht implementiert (Status = partial). Diese Dateien
+fließen in die Analyse ein, sobald ein Parser ergänzt wird.
+Die Ergebnisse der Extraktion werden als SourceUploadResponse
 zurückgegeben, das für jede Datei eine ID, den Dateinamen,
 den Extraktionsstatus, eine optionale Fehlermeldung und die Länge
 des extrahierten Textes enthält. Die Metadaten aller Quellen
-werden in einem speicherresidenten ``sources_store`` abgelegt.
+werden in einem speicherresidenten sources_store abgelegt.
 
 Der Upload‑Endpoint bildet die Grundlage für spätere Blöcke, in
 denen die KI automatisch Text aus Projektquellen verarbeiten kann.
 Er ergänzt das bestehende Upload‑Verhalten für Chat‑Anhänge und
 Open‑Point‑Anhänge und stellt sicher, dass alle relevanten
 Dokumente an einem konsistenten Ort gespeichert sind.
+
+Artefakt‑Bearbeitung (Block 14)
+
+In Block 14 wurde die Möglichkeit ergänzt, bestehende Artefakte mit Hilfe
+der KI zu bearbeiten. Nutzer können eine Bearbeitungsanweisung senden, um
+ein Dokument umzuschreiben, zu kürzen, zu verlängern oder anderweitig
+anzupassen.
+	•	Endpunkt: POST /api/v1/projects/{project_id}/artifacts/{artifact_id}/edit
+– Erwartet ein JSON‐Objekt mit dem Feld instructions, das eine klare
+Anweisung zur Überarbeitung enthält. Das Backend ruft das kleine
+LLM‑Modell (llama3.1:8b) auf, übergibt die Anweisung zusammen mit dem
+aktuellen Markdown‐Inhalt des Dokuments und erhält den überarbeiteten
+Text zurück.
+	•	Versionierung: Die Bearbeitung erzeugt immer eine neue Version des
+Artefakts, wird aber nicht automatisch als aktuelle Version gesetzt.
+Nutzer können über den bestehenden Endpunkt zum Setzen der aktuellen
+Version entscheiden, ob sie die Änderungen übernehmen möchten.
+	•	Diff: Die Antwort enthält einen Unified‑Diff (im Stil von
+difflib.unified_diff), der die Unterschiede zwischen der bisherigen
+und der neuen Version darstellt. So kann der Nutzer die Änderungen
+nachvollziehen, bevor er sie übernimmt.
+	•	Fallback: Sollte bei der Bearbeitung ein Fehler auftreten (z. B. LLM
+nicht erreichbar), bleibt der Inhalt unverändert und eine Fehlermeldung
+wird zurückgegeben.
+
+Diese Erweiterung ermöglicht iteratives Arbeiten am Dokument, ohne die
+Ausgangsversion zu verlieren. Die Bearbeitung ist auf das kleine Modell
+beschränkt; der Einsatz des 70B‑Modells ist weiterhin ausschließlich
+für die initiale Generierung reserviert.
