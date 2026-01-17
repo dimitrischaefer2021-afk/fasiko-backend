@@ -42,6 +42,14 @@ CHAT_DIR: str = get_env("CHAT_DIR", "/data/chat")
 EXPORT_DIR: str = get_env("EXPORT_DIR", "/data/exports")
 
 # ---------------------------------------------------------------------------
+# BSI‑Katalog‑Verzeichnis (Block 18)
+# ---------------------------------------------------------------------------
+# Pfad, unter dem hochgeladene BSI‑PDFs gespeichert werden. Beim Hochladen eines
+# neuen Katalogs wird hier eine Datei abgelegt und anschließend vollständig
+# verarbeitet. Pro Upload wird automatisch eine neue Versionsnummer vergeben.
+BSI_CATALOG_DIR: str = get_env("BSI_CATALOG_DIR", "/data/bsi_catalogs")
+
+# ---------------------------------------------------------------------------
 # Grenzwerte
 # ---------------------------------------------------------------------------
 # Maximale Upload‑Größe in Bytes (Default: 30 MB)

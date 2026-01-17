@@ -22,6 +22,9 @@ from .models import (
     ChatSession,
     ChatMessage,
     ChatAttachment,
+    BsiCatalog,
+    BsiModule,
+    BsiRequirement,
 )
 from .schemas import (
     ProjectCreate,
@@ -35,6 +38,9 @@ from .schemas import (
     ChatSessionCreate,
     ChatMessageCreate,
 )
+
+# Nur für BSI-Kataloge verwendete Funktionen (Block 18)
+
 from .storage import tags_to_json
 
 
@@ -627,3 +633,74 @@ def delete_chat_attachment(db: Session, message_id: str, attachment_id: str) -> 
     db.delete(att)
     db.commit()
     return True
+
+
+# ---------------------------------------------------------------------------
+# BSI‑Katalog‑Funktionen (Block 18)
+# ---------------------------------------------------------------------------
+
+def create_bsi_catalog(
+    db: Session,
+    filename: str,
+    storage_path: str,
+    modules_data: list[tuple[str, str, list[tuple[str, str]]]],
+) -> BsiCatalog:
+    """Erzeugt einen neuen BSI‑Katalog samt seiner Module und Anforderungen.
+
+    :param filename: Ursprünglicher Dateiname der hochgeladenen PDF.
+    :param storage_path: Pfad, unter dem die PDF gespeichert wurde.
+    :param modules_data: Liste von Tupeln (code, title, requirements). ``requirements``
+        ist wiederum eine Liste von Tupeln (req_id, description).
+    :returns: Das neu angelegte ``BsiCatalog``.
+    """
+    # Bestimme die nächste Versionsnummer
+    current_max = db.execute(select(func.max(BsiCatalog.version))).scalar()
+    next_version = (current_max or 0) + 1
+    catalog = BsiCatalog(
+        version=next_version,
+        filename=filename,
+        storage_path=storage_path,
+    )
+    db.add(catalog)
+    db.commit()
+    db.refresh(catalog)
+    # Füge Module und Anforderungen hinzu
+    for module_code, module_title, reqs in modules_data:
+        module = BsiModule(catalog_id=catalog.id, code=module_code, title=module_title)
+        db.add(module)
+        db.commit()
+        db.refresh(module)
+        for req_id, req_desc in reqs:
+            requirement = BsiRequirement(module_id=module.id, req_id=req_id, description=req_desc)
+            db.add(requirement)
+        db.commit()
+    db.refresh(catalog)
+    return catalog
+
+
+def list_bsi_catalogs(db: Session, limit: int = 100, offset: int = 0) -> list[BsiCatalog]:
+    """Liefert alle BSI‑Kataloge sortiert nach Erstellungsdatum absteigend."""
+    stmt = select(BsiCatalog).order_by(BsiCatalog.created_at.desc()).limit(limit).offset(offset)
+    return list(db.execute(stmt).scalars().all())
+
+
+def get_bsi_catalog(db: Session, catalog_id: str) -> BsiCatalog | None:
+    """Liest einen BSI‑Katalog anhand seiner ID."""
+    return db.get(BsiCatalog, catalog_id)
+
+
+def list_bsi_modules(db: Session, catalog_id: str) -> list[BsiModule]:
+    """Liefert alle Module zu einem Katalog, sortiert nach Modulkürzel."""
+    stmt = select(BsiModule).where(BsiModule.catalog_id == catalog_id).order_by(BsiModule.code)
+    return list(db.execute(stmt).scalars().all())
+
+
+def get_bsi_module(db: Session, module_id: str) -> BsiModule | None:
+    """Liest ein BSI‑Modul anhand seiner ID."""
+    return db.get(BsiModule, module_id)
+
+
+def list_bsi_requirements(db: Session, module_id: str) -> list[BsiRequirement]:
+    """Liefert alle Anforderungen zu einem Modul, sortiert nach Req‑ID."""
+    stmt = select(BsiRequirement).where(BsiRequirement.module_id == module_id).order_by(BsiRequirement.req_id)
+    return list(db.execute(stmt).scalars().all())

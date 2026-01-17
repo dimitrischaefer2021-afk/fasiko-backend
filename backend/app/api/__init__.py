@@ -14,6 +14,7 @@ from .jobs import router as jobs_router
 from .export import router as export_router  # Export‑Router für Download
 from .bsi import router as bsi_router  # BSI‑Router (Block 11)
 from .sources import router as sources_router  # Quellen‑Router (Block 13)
+from .bsi_catalogs import router as bsi_catalogs_router  # BSI‑Kataloge (Block 18)
 
 
 def get_api_router() -> APIRouter:
@@ -26,4 +27,5 @@ def get_api_router() -> APIRouter:
     api_router.include_router(export_router)
     api_router.include_router(bsi_router)
     api_router.include_router(sources_router)
+    api_router.include_router(bsi_catalogs_router)
     return api_router

@@ -230,21 +230,21 @@ In Block 14 wurde die Möglichkeit ergänzt, bestehende Artefakte mit Hilfe
 der KI zu bearbeiten. Nutzer können eine Bearbeitungsanweisung senden, um
 ein Dokument umzuschreiben, zu kürzen, zu verlängern oder anderweitig
 anzupassen.
-	•	Endpunkt: POST /api/v1/projects/{project_id}/artifacts/{artifact_id}/edit
+•	Endpunkt: POST /api/v1/projects/{project_id}/artifacts/{artifact_id}/edit
 – Erwartet ein JSON‐Objekt mit dem Feld instructions, das eine klare
 Anweisung zur Überarbeitung enthält. Das Backend ruft das kleine
 LLM‑Modell (llama3.1:8b) auf, übergibt die Anweisung zusammen mit dem
 aktuellen Markdown‐Inhalt des Dokuments und erhält den überarbeiteten
 Text zurück.
-	•	Versionierung: Die Bearbeitung erzeugt immer eine neue Version des
+•	Versionierung: Die Bearbeitung erzeugt immer eine neue Version des
 Artefakts, wird aber nicht automatisch als aktuelle Version gesetzt.
 Nutzer können über den bestehenden Endpunkt zum Setzen der aktuellen
 Version entscheiden, ob sie die Änderungen übernehmen möchten.
-	•	Diff: Die Antwort enthält einen Unified‑Diff (im Stil von
+•	Diff: Die Antwort enthält einen Unified‑Diff (im Stil von
 difflib.unified_diff), der die Unterschiede zwischen der bisherigen
 und der neuen Version darstellt. So kann der Nutzer die Änderungen
 nachvollziehen, bevor er sie übernimmt.
-	•	Fallback: Sollte bei der Bearbeitung ein Fehler auftreten (z. B. LLM
+•	Fallback: Sollte bei der Bearbeitung ein Fehler auftreten (z. B. LLM
 nicht erreichbar), bleibt der Inhalt unverändert und eine Fehlermeldung
 wird zurückgegeben.
 
@@ -260,17 +260,17 @@ Bearbeitung von Artefakten verbessert. Ziel ist es, langlaufende
 Operationen wie LLM‑Generierung und ‑Bearbeitung als asynchrone Jobs
 über den bestehenden Job‑Service auszuführen und gleichzeitig die
 Qualität der Dokumente zu erhöhen.
-	•	Job‑Typen: Der Endpunkt POST /api/v1/jobs unterstützt jetzt drei
+•	Job‑Typen: Der Endpunkt POST /api/v1/jobs unterstützt jetzt drei
 Typen:
-	•	export – unverändert, erstellt ZIP‑Archive für Artefakte.
-	•	generate – generiert ein oder mehrere Artefakte für ein Projekt. Es
+•	export – unverändert, erstellt ZIP‑Archive für Artefakte.
+•	generate – generiert ein oder mehrere Artefakte für ein Projekt. Es
 sind project_id und types (Liste der Artefakt‑Typen) anzugeben.
 Das System ruft für jeden Typ das LLM auf und erstellt das Artefakt
 mit Version 1 direkt mit dem generierten Inhalt. Existiert das
 Artefakt bereits, wird eine neue Version erstellt und als aktuelle
 Version markiert. Offene Fragen werden erkannt und als Open Points
 gespeichert.
-	•	edit – bearbeitet ein vorhandenes Artefakt. Es sind project_id,
+•	edit – bearbeitet ein vorhandenes Artefakt. Es sind project_id,
 artifact_id und instructions anzugeben. Das LLM (8B) erhält
 Anweisung und den aktuellen Inhalt, entfernt keine
 OFFENE_FRAGE‑Zeilen, behält die Struktur bei und fügt alle
@@ -279,18 +279,18 @@ Ende ein. Neue Fakten dürfen nicht erfunden werden. Die Bearbeitung
 erzeugt eine neue Version, die nicht automatisch als aktuelle
 Version gesetzt wird. Der Job liefert die neue Versionsnummer und
 einen Unified‑Diff zurück.
-	•	Versionierung bei Generierung: Wenn ein Artefakt zum ersten Mal
+•	Versionierung bei Generierung: Wenn ein Artefakt zum ersten Mal
 generiert wird, speichert das System den generierten Inhalt direkt in
 Version 1. Die zuvor verwendete leere Version 1 entfällt damit. Bei
 erneuter Generierung wird wie gewohnt eine neue Version erstellt
 (Version 2, 3, …) und als aktuelle Version gesetzt. Dieses Verhalten
 stellt sicher, dass es keine leere Vorgängerversion mehr gibt.
-	•	Erweiterte Open‑Point‑Erkennung: Bei der Generierung werden jetzt
+•	Erweiterte Open‑Point‑Erkennung: Bei der Generierung werden jetzt
 auch Zeilen erkannt, die mit „- OFFENE_FRAGE:“ beginnen. Diese
 Varianten treten in den Vorlagen als Aufzählungspunkte auf. Sie
 werden aus dem generierten Inhalt entfernt und als offene Punkte
 persistiert.
-	•	Bearbeitungs‑Prompt: Das Editor‑Prompt wurde angepasst, damit das
+•	Bearbeitungs‑Prompt: Das Editor‑Prompt wurde angepasst, damit das
 kleine Modell OFFENE_FRAGE‑Zeilen nicht entfernt, die Struktur
 beibehält und keine neuen Fakten erfindet. Zusätzlich wird am Ende
 automatisch eine Liste aller offenen Fragen unter der Überschrift
@@ -310,19 +310,19 @@ Apply/Reject und Änderungszusammenfassung (Block 16)
 Block 16 erweitert das Versionsmanagement um explizites Übernehmen
 (Apply) und Verwerfen (Reject) neuer Versionen sowie um eine
 Zusammenfassung der Änderungen zwischen Versionen.
-	•	Version‑Zusammenfassung: Über den Endpunkt
+•	Version‑Zusammenfassung: Über den Endpunkt
 GET /api/v1/projects/{project_id}/artifacts/{artifact_id}/versions/{version}/summary
 können Nutzer sich vor dem Übernehmen einen Überblick verschaffen. Die
 Antwort liefert added_count (hinzugefügte Zeilen), removed_count
 (entfernte Zeilen) und changed_sections (Liste geänderter
 Markdown‑Abschnitte). Vergleichsbasis ist jeweils die Vorgängerversion
 oder ein leeres Dokument bei Version 1.
-	•	Apply: Mit
+•	Apply: Mit
 POST /api/v1/projects/{project_id}/artifacts/{artifact_id}/versions/{version}/apply
 wird eine Version als aktuelle Version gesetzt. Dies ersetzt
 bestehende Inhalte nicht still, sondern erfolgt explizit. Wenn die
 Version bereits aktuell ist, passiert nichts.
-	•	Reject: Mit
+•	Reject: Mit
 POST /api/v1/projects/{project_id}/artifacts/{artifact_id}/versions/{version}/reject
 kann eine Version verworfen werden. Die Version bleibt in der
 Historie erhalten, wird aber nicht zur aktuellen Version gemacht. Das
@@ -339,17 +339,17 @@ Projektquellen‑Persistenz & Limits (Block 17)
 
 In Block 17 wird die Verwaltung von Projektquellen (Uploads) deutlich
 verbessert und der Summary‑Endpunkt aus Block 16 korrigiert.
-	•	Persistente Quellen: Bisher wurden hochgeladene Dateien nur im
+•	Persistente Quellen: Bisher wurden hochgeladene Dateien nur im
 Verzeichnis UPLOAD_DIR/<project_id> gespeichert und in einem
 speicherresidenten sources_store verwaltet. Ab Block 17 werden
 alle Metadaten zu den Quellen in der Datenbanktabelle
 sources (SourceDocument) persistiert. Diese Tabelle
 enthält neben Datei‑ID, Name, Größe und Speicherdatum jetzt auch
 neue Felder zur Textextraktion:
-	•	extraction_status –  ok, partial oder error.
-	•	extraction_reason –  kurze Fehlerbeschreibung oder Grund für
+•	extraction_status –  ok, partial oder error.
+•	extraction_reason –  kurze Fehlerbeschreibung oder Grund für
 einen partiellen Erfolg.
-	•	extracted_text_len –  Anzahl der extrahierten Zeichen.
+•	extracted_text_len –  Anzahl der extrahierten Zeichen.
 Diese Werte werden beim Upload gesetzt. Für TXT/MD werden die
 Inhalte direkt eingelesen, für DOCX über python‑docx, bei PDF
 wird ab sofort mithilfe der Bibliothek PyPDF2 der Text
@@ -360,26 +360,26 @@ Leere Texte führen zu partial mit dem Grund „No text
 extracted“. Die In‑Memory‑Struktur sources_store
 bleibt vorerst bestehen, um die Kompatibilität zu älteren Modulen
 sicherzustellen; sie wird parallel zur Datenbank aktualisiert.
-	•	Upload‑Limits: Es gelten jetzt feste Grenzwerte für
+•	Upload‑Limits: Es gelten jetzt feste Grenzwerte für
 Projekt‑Uploads, die über Umgebungsvariablen steuerbar sind:
-	•	MAX_UPLOAD_BYTES (Standard 30 MB) – maximale Größe einer
+•	MAX_UPLOAD_BYTES (Standard 30 MB) – maximale Größe einer
 einzelnen Datei. Überschreiten Dateien diesen Wert, bricht der
 Upload mit HTTP 413 ab.
-	•	MAX_SOURCES_PER_PROJECT (Standard 50) – maximale Anzahl von
+•	MAX_SOURCES_PER_PROJECT (Standard 50) – maximale Anzahl von
 Quellen pro Projekt. Werden mehr Dateien hochgeladen, als
 erlaubt sind (inklusive bereits gespeicherter Quellen), wird
 der Upload mit HTTP 400 abgelehnt.
-	•	Unterstützte Dateitypen sind unverändert .txt, .md, .docx und
+•	Unterstützte Dateitypen sind unverändert .txt, .md, .docx und
 .pdf. Andere Endungen führen zu HTTP 400.
-	•	Summary‑Fix: Der Endpunkt
+•	Summary‑Fix: Der Endpunkt
 GET /api/v1/projects/{project_id}/artifacts/{artifact_id}/versions/{version}/summary
 liefert ab Block 17 zwei wesentliche Verbesserungen:
-	•	Leere Vorgängerversion – für Version 1 wird immer
+•	Leere Vorgängerversion – für Version 1 wird immer
 eine leere Änderungsliste zurückgegeben (added_count = 0,
 removed_count = 0, changed_sections = []), weil es keinen
 Vergleichsstand gibt. Die früheren Zeilenzählungen für Version 1
 sind damit behoben.
-	•	Ignorieren von Formatänderungen – bei der Berechnung des
+•	Ignorieren von Formatänderungen – bei der Berechnung des
 Diffs werden nun vorab Leerzeilen und trailing spaces
 normalisiert. Mehrere aufeinanderfolgende Leerzeilen werden auf
 eine reduziert. Dadurch werden reine Formatänderungen (z. B.
@@ -392,3 +392,82 @@ nachvollziehbar gespeichert und später auch versioniert oder ersetzt
 werden können. Durch die Limits wird verhindert, dass einzelne
 Projekte den Speicher überlasten. Die Korrektur des Summary‑Endpoints
 erhöht die Transparenz bei der Versionsverwaltung.
+
+BSI‑Kataloge (Block 18)
+
+Mit Block 18 wird das FaSiKo‑Backend um einen vollständigen BSI‑Baustein‑Katalog
+erweitert, der nicht mehr statisch im Code hinterlegt ist. Nutzer können
+offizielle BSI‑PDFs (z. B. das IT‑Grundschutz‑Kompendium) hochladen; aus
+jeder hochgeladenen Datei wird ein neuer Katalog mit eigener Version erzeugt.
+Die PDF wird im Verzeichnis BSI_CATALOG_DIR gespeichert und anschließend
+verarbeitet:
+	•	Textextraktion: Der Inhalt des PDFs wird mithilfe von PyPDF2
+extrahiert und grob normalisiert (Silbentrennung wird entfernt). Ist
+kein PDF‑Parser vorhanden oder kann kein Text ausgelesen werden,
+wird der Upload als error markiert.
+	•	Modul‑Erkennung: Aus dem normalisierten Text werden alle
+Bausteine erkannt, deren Zeilen mit einem Modulkürzel wie
+SYS.3.2.2 beginnen, gefolgt von einem Titel. Jede gefundene Zeile
+erzeugt einen neuen BsiModule‑Datensatz mit Code und Titel.
+	•	Anforderungen: Unterhalb eines Moduls werden Anforderungen erkannt,
+die entweder mit A und einer Nummer (z. B. A1, A 2) beginnen oder
+bereits das vollständige Modulpräfix enthalten (z. B. OPS.1.1.2.A2).
+Für jede erkannte Zeile wird aus Modulcode und Nummer sowie dem Titel
+inklusive Klassifizierung (z. B. „Regelungen zum Umgang mit
+eingebetteten Systemen (B)“) ein vollständiger BSI‑Code im Format
+SYS.4.3.A1 Regelungen zum Umgang mit eingebetteten Systemen (B)
+gebildet und als req_id gespeichert. Der Parser durchsucht die
+Anforderungszeile nach der ersten vorkommenden Klassifizierung in
+Klammern (B), (S) oder (H) und trennt die Kennung vom
+Beschreibungstext. Alles bis zu dieser Klammer bildet die Kennung
+inklusive Titel und Klassifizierung; der danach folgende normative
+Text wird in der Spalte description gespeichert. Die Beschreibung
+kann sich über mehrere Zeilen erstrecken und wird beim Parsen zu
+einem Fließtext zusammengeführt. Jede Anforderung wird als
+BsiRequirement persistiert. Sollten im PDF mehrere Zeilen mit
+identischem Modulcode vorkommen (z. B. IND.2.3 Sensoren und Aktoren und IND.2.3 Sensoren und Aktoren R2 IT‑System), so wird
+das Modul nur einmal angelegt, und die Anforderungen aller
+Vorkommen werden zusammengeführt.
+
+Die so extrahierten Daten werden persistiert: Die neuen Tabellen
+bsi_catalogs, bsi_modules und bsi_requirements halten Kataloge,
+Bausteine und Anforderungen. Pro Upload wird die Versionsnummer des
+Katalogs automatisch erhöht. Über eine neue API können Kataloge
+aufgelistet und die enthaltenen Module sowie deren Anforderungen
+abgerufen werden.
+
+Dieser Katalog bildet die Grundlage für spätere KI‑Analysen. Die
+Verarbeitung erfolgt asynchron im Upload‑Endpunkt, sodass
+Fehler oder unvollständige Extraktion mit einem Status (ok,
+partial oder error) zurückgemeldet werden.
+
+Nachträgliche Parser‑Verbesserung
+
+Beim Einsatz des ersten Parsers zeigte sich, dass viele Anforderungen im
+IT‑Grundschutz‑Kompendium nicht mit einer reinen A‑Kennung beginnen,
+sondern das Modulpräfix enthalten (z. B. SYS.3.2.2.A1). Um diese
+Fälle korrekt zu verarbeiten, erlaubt der Parser nun auch Zeilen mit
+vorangestelltem Modulkürzel und Punkt vor der Anforderungsnummer.
+Zudem werden Beschreibungstexte, die sich über mehrere Zeilen erstrecken,
+auf eine Zeile zusammengeführt. Diese Verbesserung behebt ein Problem,
+bei dem die API zum Abrufen der Anforderungen eine leere Liste zurückgab.
+
+Weitere Optimierungen
+
+Bei der weiteren Nutzung des Katalog‑Uploads wurden zusätzliche
+Verbesserungen vorgenommen:
+	•	Deduplication von Modulen: Einige BSI‑PDFs enthalten denselben
+Baustein mehrfach, beispielsweise IND.2.3 Sensoren und Aktoren und
+IND.2.3 Sensoren und Aktoren R2 IT‑System. Der Parser führt solche
+Duplikate nun zu einem Modul zusammen, sodass jeder Modulcode nur
+einmal in der Datenbank vorkommt.
+	•	Längere Anforderungskennungen: Da req_id den vollständigen
+Modulcode inklusive Titel und Klassifizierung enthält, kann dieses
+Feld erheblich länger werden als die ursprünglichen 50 Zeichen.
+Zunächst wurde die Spaltenlänge schrittweise erhöht (Migration
+0004_alter_req_id_length auf 256 Zeichen und
+0005_expand_bsi_req_id_length auf 512 Zeichen). Es zeigte sich
+jedoch, dass einige Anforderungen gar keine Klassifizierung besitzen
+oder besonders lange Titel haben. Um unnötige Upload‑Fehler zu
+vermeiden, setzt die Migration 0006_change_req_id_to_text den
+Datentyp der Spalte req_id auf TEXT (unbegrenzte Länge).

@@ -290,8 +290,8 @@ Editor‑Prompt.
 
 Block 16 – Apply/Reject & Änderungszusammenfassung
 •   Neue Endpunkte in backend/app/api/artifacts.py:
-* GET /api/v1/projects/{project_id}/artifacts/{artifact_id}/versions/{version}/summary berechnet die Anzahl hinzugefügter und entfernten Zeilen sowie eine Liste geänderter Abschnitte (basierend auf Markdown‑Überschriften). Die Vergleichsbasis ist die Vorgängerversion.
-* POST /apply und POST /reject unter demselben Pfad setzen eine Version explizit als aktuelle Version oder verwerfen sie. Verwerfen der aktuellen Version ist nicht erlaubt. Ein Löschen verworfener Versionen wird optional in späteren Blöcken ergänzt.
+	•	GET /api/v1/projects/{project_id}/artifacts/{artifact_id}/versions/{version}/summary berechnet die Anzahl hinzugefügter und entfernten Zeilen sowie eine Liste geänderter Abschnitte (basierend auf Markdown‑Überschriften). Die Vergleichsbasis ist die Vorgängerversion.
+	•	POST /apply und POST /reject unter demselben Pfad setzen eine Version explizit als aktuelle Version oder verwerfen sie. Verwerfen der aktuellen Version ist nicht erlaubt. Ein Löschen verworfener Versionen wird optional in späteren Blöcken ergänzt.
 •   Neues Schema ArtifactChangeSummaryOut in backend/app/schemas.py definiert die Struktur der Zusammenfassung (Version, added_count, removed_count, changed_sections).
 •   Anpassung TRUTH.md: Abschnitt „Apply/Reject und Änderungszusammenfassung (Block 16)“ erläutert die neuen Funktionen und den Lebenszyklus einer Version.
 
@@ -302,3 +302,72 @@ Block 17 – Projektquellen‑Persistenz, Limits & Summary‑Fix
 •   PDF‑Extraktion: Die Funktion _extract_text_from_content in backend/app/api/sources.py kann jetzt mittels PyPDF2 Texte aus PDF-Dateien extrahieren. Wenn die Bibliothek nicht verfügbar ist oder ein Fehler auftritt, wird der Status error gesetzt; leere Ausgaben führen zu partial. Dadurch fließen PDFs direkt in die Analyse ein, sofern PyPDF2 vorhanden ist.
 •   Summary‑Fix: Der Summary‑Endpunkt in backend/app/api/artifacts.py liefert ab Block 17 zwei Verbesserungen: (1) Für Version 1 wird immer eine leere Änderungsliste zurückgegeben (added_count=0, removed_count=0, changed_sections=[]). (2) Bei der Diff‑Berechnung werden nun vorab Leerzeilen und trailing Spaces normalisiert, wodurch reine Formatänderungen nicht mehr als Zeilenänderungen zählen.
 •   Dokumentation aktualisiert: TRUTH.md enthält nun einen neuen Abschnitt „Projektquellen‑Persistenz & Limits (Block 17)“, der die persistente Speicherung von Quellen, die Upload‑Grenzwerte und den korrigierten Summary‑Endpoint beschreibt.
+
+Block 18 – BSI‑Katalog‑Upload & Verwaltung
+•   Neue Modelle: In backend/app/models.py wurden die Klassen
+BsiCatalog, BsiModule und BsiRequirement eingeführt. Sie
+repräsentieren einen hochgeladenen BSI‑Katalog, die enthaltenen
+Bausteine und deren Anforderungen. Jedes Modell besitzt eigene
+UUIDs, Zeitstempel und Beziehungsspalten.
+•   Neue Alembic‑Migration: Die Datei
+backend/alembic/versions/0003_bsi_catalog_tables.py legt die
+Tabellen bsi_catalogs, bsi_modules und bsi_requirements an und
+ermöglicht bei einem Downgrade deren Entfernung.
+•   Neue Umgebungsvariable: BSI_CATALOG_DIR in
+backend/app/settings.py und in .env.example definiert das
+Verzeichnis, in dem BSI‑PDFs gespeichert werden.
+•   Neue Schemas: In backend/app/schemas.py wurden die Klassen
+BsiCatalogOut, BsiModuleOut, BsiRequirementOut und
+BsiCatalogUploadResponse ergänzt, um die API‑Antworten für
+Kataloge, Module und Anforderungen zu definieren.
+•   CRUD‑Funktionen: In backend/app/crud.py wurden neue
+Funktionen (create_bsi_catalog, list_bsi_catalogs,
+get_bsi_catalog, list_bsi_modules, get_bsi_module,
+list_bsi_requirements) implementiert, um BSI‑Kataloge und ihre
+Bestandteile zu verwalten.
+•   Neuer Router: backend/app/api/bsi_catalogs.py stellt
+Endpunkte zum Hochladen von Katalogen (POST /api/v1/bsi/catalogs/upload),
+zum Auflisten von Katalogen (GET /api/v1/bsi/catalogs) sowie zum
+Abfragen von Modulen und Anforderungen bereit. Die Upload‑Funktion
+extrahiert Text aus PDFs mit PyPDF2, erkennt Module und
+Anforderungen heuristisch und persistiert das Ergebnis. Der
+Verarbeitungsstatus (ok, partial, error) und eine optionale
+Fehlermeldung werden für jede Datei zurückgegeben.
+
+•   Bugfixes nach Block 18:
+– Die Alembic‑Migration 0003_bsi_catalog_tables.py verweist nun auf
+die korrekte Vorgänger‑Revision 0002_extraction_fields. Ursprünglich
+wurde der lange Bezeichner 0002_add_extraction_fields_to_sources
+genutzt, der zu einem KeyError bei alembic upgrade führte.
+– Die Parser‑Logik in backend/app/api/bsi_catalogs.py erkennt
+Anforderungen jetzt auch dann, wenn sie als SYS.3.2.2.A1 oder
+SYS.3.2.2.A12 im Text erscheinen. Aus Modulcode und
+Nummer wird der vollständige Anforderungscode (z. B. OPS.1.1.2.A2)
+zusammengesetzt und als req_id gespeichert. Zeilenfortsetzungen
+werden besser zusammengeführt. Ohne diese Anpassungen lieferte der
+Endpunkt GET /api/v1/bsi/catalogs/{id}/modules/{module_id}/requirements
+eine leere Liste und req_id war lediglich A7, A8 usw.
+– Es werden keine doppelten Module mehr angelegt, wenn derselbe
+Modulcode mehrfach im PDF auftaucht (z. B. IND.2.3 Sensoren und Aktoren
+und IND.2.3 Sensoren und Aktoren R2 IT-System). Beim Parsen werden
+solche Duplikate zu einem Modul zusammengeführt; die Anforderungen
+werden ggf. kombiniert.
+– Die Anforderungs‑IDs (req_id) enthalten jetzt den vollständigen
+BSI‑Code inklusive Titel und Klassifizierung (z. B.
+SYS.4.3.A1 Regelungen zum Umgang mit eingebetteten Systemen (B)).
+Der eigentliche Beschreibungstext (normativer Teil) wird in einem
+separaten Feld description gespeichert. Aufgrund einiger
+Anforderungen ohne Klassifizierung oder mit sehr langen Titeln
+konnten die Kennungen länger als 512 Zeichen werden. Daher
+wurde die Spalte req_id zunächst auf 256 Zeichen
+(0004_alter_req_id_length) und anschließend auf 512 Zeichen
+(0005_expand_bsi_req_id_length) erhöht. Um zukünftige
+Überschreitungen zu verhindern, ändert die Migration
+0006_change_req_id_to_text den Datentyp von req_id auf
+TEXT (unbegrenzt).
+•   API‑Registrierung: In backend/app/api/__init__.py und
+backend/app/main.py wird der neue Router unter /api/v1 eingebunden.
+•   Dokumentation: docs/TRUTH.md enthält nun den Abschnitt
+„BSI‑Kataloge (Block 18)“, der die Funktionsweise des Kataloguploads
+und die Persistenz der extrahierten Module und Anforderungen
+beschreibt. Dieses Änderungsprotokoll wurde entsprechend erweitert.

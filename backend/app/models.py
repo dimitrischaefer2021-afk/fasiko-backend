@@ -238,3 +238,88 @@ class ChatAttachment(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
 
     message: Mapped["ChatMessage"] = relationship(back_populates="attachments")
+
+
+# ----------------- BSI‑Katalog‑Modelle (Block 18) -----------------
+
+class BsiCatalog(Base):
+    """Repräsentiert einen hochgeladenen BSI‑Katalog (PDF).
+
+    Jede Datei erhält eine eindeutige ID und eine fortlaufende Versionsnummer.
+    Die zugehörigen Module und Anforderungen werden nach dem Upload aus dem PDF
+    extrahiert und in eigenen Tabellen gespeichert.
+    """
+
+    __tablename__ = "bsi_catalogs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    filename: Mapped[str] = mapped_column(String(512), nullable=False)
+    storage_path: Mapped[str] = mapped_column(String(1024), nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+
+    # Beziehungen
+    modules: Mapped[list["BsiModule"]] = relationship(
+        back_populates="catalog",
+        cascade="all, delete-orphan",
+        order_by="BsiModule.code",
+    )
+
+
+class BsiModule(Base):
+    """Repräsentiert ein BSI‑Modul/Baustein innerhalb eines Katalogs.
+
+    Beispiel: SYS.3.2.2 Systemadministration. Jedes Modul gehört zu genau
+    einem Katalog und kann mehrere Anforderungen/Maßnahmen enthalten.
+    """
+
+    __tablename__ = "bsi_modules"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    catalog_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("bsi_catalogs.id", ondelete="CASCADE"), nullable=False
+    )
+    code: Mapped[str] = mapped_column(String(50), nullable=False)
+    title: Mapped[str] = mapped_column(String(500), nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+
+    # Beziehungen
+    catalog: Mapped["BsiCatalog"] = relationship(back_populates="modules")
+    requirements: Mapped[list["BsiRequirement"]] = relationship(
+        back_populates="module",
+        cascade="all, delete-orphan",
+        order_by="BsiRequirement.req_id",
+    )
+
+
+class BsiRequirement(Base):
+    """Repräsentiert eine Anforderung/Maßnahme innerhalb eines BSI‑Moduls.
+
+    Eine Anforderung wird anhand ihres vollständigen BSI‑Codes inklusive Titel
+    identifiziert, z. B. ``SYS.4.3.A1 Regelungen zum Umgang mit eingebetteten
+    Systemen (B)``. Dieses Feld kann länger sein als die klassische
+    "A1"‑Kennung, daher wurde die Länge der Spalte erhöht.
+    Der ausführliche Beschreibungstext enthält nur den normativen Anteil
+    nach dem Titel.
+    """
+
+    __tablename__ = "bsi_requirements"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    module_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("bsi_modules.id", ondelete="CASCADE"), nullable=False
+    )
+    # req_id enthält den vollständigen BSI‑Code inklusive Titel und Klassifizierung.
+    # Da manche Anforderungen keine Klassifizierung besitzen oder längere Titel
+    # beinhalten, kann die Kennung sehr lang werden. Um Datenbankfehler zu
+    # vermeiden, verwenden wir den Typ ``Text``, der in PostgreSQL keine
+    # Längenbeschränkung besitzt.
+    req_id: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+
+    # Beziehung
+    module: Mapped["BsiModule"] = relationship(back_populates="requirements")

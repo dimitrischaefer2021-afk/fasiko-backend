@@ -100,6 +100,57 @@ class SourceUploadResponse(BaseModel):
     reason: str | None = Field(default=None, description="Fehlerbeschreibung bei status=partial|error")
     extracted_text_len: int = Field(..., description="Länge des extrahierten Textes (0 bei Misserfolg)")
 
+# -------- BSI‑Kataloge (Block 18) --------
+
+class BsiCatalogOut(BaseModel):
+    """Beschreibt einen hochgeladenen BSI‑Katalog.
+
+    Jeder Katalog verfügt über eine eigene UUID, eine fortlaufende Version und
+    das Erstellungsdatum. Diese Struktur wird für die Auflistung der verfügbaren
+    Kataloge genutzt.
+    """
+
+    id: str
+    version: int
+    filename: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class BsiModuleOut(BaseModel):
+    """Beschreibt ein einzelnes BSI‑Modul innerhalb eines Katalogs."""
+
+    id: str
+    code: str
+    title: str
+
+    model_config = {"from_attributes": True}
+
+
+class BsiRequirementOut(BaseModel):
+    """Beschreibt eine einzelne Anforderung/Maßnahme in einem Modul."""
+
+    id: str
+    req_id: str
+    description: str
+
+    model_config = {"from_attributes": True}
+
+
+class BsiCatalogUploadResponse(BaseModel):
+    """Antwort auf das Hochladen eines oder mehrerer BSI‑Kataloge.
+
+    Der ``status`` zeigt an, ob die Verarbeitung erfolgreich (``ok``), teilweise
+    erfolgreich (``partial``) oder fehlgeschlagen (``error``) war. ``message``
+    enthält bei ``partial`` oder ``error`` eine erklärende Fehlermeldung.
+    """
+
+    id: str
+    version: int
+    status: str
+    message: str | None = None
+
 # -------- Artifacts (Dokumente) + Versionierung --------
 
 class ArtifactCreate(BaseModel):
@@ -681,6 +732,12 @@ __all__ = [
     "BsiMeasureEvaluation",
     "BsiEvaluationDetailOut",
     "BsiAnalyzeResponse",
+
+    # BSI‑Kataloge (Block 18)
+    "BsiCatalogOut",
+    "BsiModuleOut",
+    "BsiRequirementOut",
+    "BsiCatalogUploadResponse",
 
     # Artefakt‑Bearbeitung (Block 14)
     "ArtifactEditRequest",
