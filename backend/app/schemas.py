@@ -129,10 +129,19 @@ class BsiModuleOut(BaseModel):
 
 
 class BsiRequirementOut(BaseModel):
-    """Beschreibt eine einzelne Anforderung/Maßnahme in einem Modul."""
+    """Beschreibt eine einzelne Anforderung/Maßnahme in einem Modul.
+
+    Neben der vollständigen Kennung ``req_id`` werden auch der reine Titel
+    (``title``), die Klassifizierung (``classification``) und ein Flag
+    ``is_obsolete`` zurückgegeben. Dies ermöglicht eine feinere Darstellung
+    und Verarbeitung der Anforderungen auf Client‑Seite.
+    """
 
     id: str
     req_id: str
+    title: str
+    classification: str | None = None
+    is_obsolete: bool
     description: str
 
     model_config = {"from_attributes": True}

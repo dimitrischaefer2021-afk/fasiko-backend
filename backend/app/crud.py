@@ -643,14 +643,20 @@ def create_bsi_catalog(
     db: Session,
     filename: str,
     storage_path: str,
-    modules_data: list[tuple[str, str, list[tuple[str, str]]]],
+    modules_data: list[
+        tuple[
+            str,
+            str,
+            list[tuple[str, str, str | None, bool, str]],
+        ]
+    ],
 ) -> BsiCatalog:
     """Erzeugt einen neuen BSI‑Katalog samt seiner Module und Anforderungen.
 
     :param filename: Ursprünglicher Dateiname der hochgeladenen PDF.
     :param storage_path: Pfad, unter dem die PDF gespeichert wurde.
     :param modules_data: Liste von Tupeln (code, title, requirements). ``requirements``
-        ist wiederum eine Liste von Tupeln (req_id, description).
+        ist wiederum eine Liste von Tupeln (req_id, title, classification, is_obsolete, description).
     :returns: Das neu angelegte ``BsiCatalog``.
     """
     # Bestimme die nächste Versionsnummer
@@ -670,8 +676,15 @@ def create_bsi_catalog(
         db.add(module)
         db.commit()
         db.refresh(module)
-        for req_id, req_desc in reqs:
-            requirement = BsiRequirement(module_id=module.id, req_id=req_id, description=req_desc)
+        for req_id, title, classification, is_obsolete, req_desc in reqs:
+            requirement = BsiRequirement(
+                module_id=module.id,
+                req_id=req_id,
+                title=title,
+                classification=classification,
+                is_obsolete=1 if is_obsolete else 0,
+                description=req_desc,
+            )
             db.add(requirement)
         db.commit()
     db.refresh(catalog)

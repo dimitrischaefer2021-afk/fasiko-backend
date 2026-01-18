@@ -365,9 +365,73 @@ wurde die Spalte req_id zunächst auf 256 Zeichen
 Überschreitungen zu verhindern, ändert die Migration
 0006_change_req_id_to_text den Datentyp von req_id auf
 TEXT (unbegrenzt).
+
+Block 19 – BSI‑Anforderungsdetails & Validierung
+•   Neue Spalten für Anforderungen: In backend/app/models.py
+wurde BsiRequirement um die Felder title, classification und
+is_obsolete erweitert. title enthält den reinen Titel (ohne Code
+und Klassifizierung), classification speichert den Buchstaben
+„B“, „S“ oder „H“, sofern vorhanden, und is_obsolete ist ein
+Integer‑Flag (0/1) zur Kennzeichnung entfallener Anforderungen.
+Die Spalte req_id bleibt vom Typ TEXT und enthält weiterhin
+den vollständigen BSI‑Code inklusive Titel und Klassifizierung.
+•   Neue Alembic‑Migration: Die Revision
+0007_add_req_extras (0007_add_classification_and_is_obsolete.py) fügt die neuen
+Spalten title, classification und is_obsolete zur Tabelle
+bsi_requirements hinzu. Der kurze Revisionsname wird verwendet,
+da die Spalte version_num in der Tabelle alembic_version
+auf 32 Zeichen beschränkt ist. Standardwerte werden im Anschluss
+entfernt, um das Verhalten für neue Einträge klar zu definieren.
+•   Parser‑Optimierung: In backend/app/api/bsi_catalogs.py wurde
+_parse_modules aktualisiert, um Klassifikationen (B), (S) oder
+(H) zuverlässig zu erkennen. Der Parser trennt den Titel bis
+zur Klammer ab, setzt die Klassifizierung separat und sammelt den
+restlichen Text in description. Enthält der Titel das Wort
+„ENTFALLEN“, wird is_obsolete auf True gesetzt. Zeilen, die
+keine neue Anforderung beginnen, werden als Fortsetzung des
+Beschreibungstexts behandelt.
+•   CRUD‑Funktionen und Schemas: crud.create_bsi_catalog nimmt
+nun pro Anforderung ein Tupel (req_id, title, classification, is_obsolete, description) entgegen und speichert diese Werte. Die
+Schema‑Klasse BsiRequirementOut wurde um die Felder title,
+classification und is_obsolete ergänzt.
+•   Dokumentation: docs/TRUTH.md enthält nun den Abschnitt
+„BSI‑Katalog‑Validierung und Anforderungsdetails (Block 19)“, der
+die neuen Felder, die Parser‑Verbesserungen und das Validierungsziel
+erläutert. Dieses Änderungsprotokoll wurde entsprechend erweitert.
 •   API‑Registrierung: In backend/app/api/__init__.py und
 backend/app/main.py wird der neue Router unter /api/v1 eingebunden.
 •   Dokumentation: docs/TRUTH.md enthält nun den Abschnitt
 „BSI‑Kataloge (Block 18)“, der die Funktionsweise des Kataloguploads
 und die Persistenz der extrahierten Module und Anforderungen
 beschreibt. Dieses Änderungsprotokoll wurde entsprechend erweitert.
+
+Block 20 – Überarbeitung der PDF‑Extraktion
+•   Entfernung von pdfplumber: Tests mit pdfplumber zeigten
+unerwartete Worttrennungen und fehlende Leerzeichen. Daher wurde
+die Bibliothek wieder entfernt. requirements.txt enthält jetzt
+nur noch PyPDF2 für die PDF‑Extraktion.
+•   Rückkehr zu PyPDF2: Die Funktion _extract_pdf_text in
+backend/app/api/bsi_catalogs.py nutzt nun ausschließlich
+PyPDF2. Das sorgt für stabilere Ergebnisse, auch wenn
+Zeilenumbrüche und Aufzählungen nicht perfekt abgebildet werden.
+•   Vereinfachte Text‑Heuristik: Die zuvor eingeführte Heuristik,
+Leerzeichen vor Präpositionen einzufügen, wurde entfernt, da sie zu
+unnatürlichen Worttrennungen führte. _cleanup_description setzt
+nur noch grundlegende Regeln um: Silbentrennungen entfernen,
+Leerzeichen nach Satzzeichen und vor Großbuchstaben einfügen sowie
+Mehrfach‑Leerzeichen reduzieren.
+•   Verbesserte Modul‑Erkennung: Der Parser erkennt nun auch
+Untermodulcodes mit zwei oder mehr numerischen Segmenten (z. B.
+DER.2.1, OPS.1.1) als neue Module – selbst wenn das
+Aufzählungszeichen bei der Extraktion fehlt. Dies stellt sicher,
+dass Untermodule wie «DER.2.1 Behandlung von Sicherheitsvorfällen»,
+«DER.2.2 Vorsorge für die IT‑Forensik» und «DER.2.3 Bereinigung
+weitreichender Sicherheitsvorfälle» korrekt als eigenständige
+Bausteine gespeichert werden. Die bisherige Erkennung von Bullet‑
+Zeilen bleibt bestehen.
+•   Dokumentation angepasst: Der Abschnitt „Überarbeitung der
+PDF‑Extraktion“ in docs/TRUTH.md erläutert die Gründe für den
+Verzicht auf pdfplumber und die Anpassungen am Parser. So bleibt
+die Wahrheit im Repository konsistent.
+•   Keine Datenbank‑Änderung erforderlich: Die Änderungen betreffen
+nur die Extraktion. Modelle und Migrationen bleiben unverändert.

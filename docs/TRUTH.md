@@ -471,3 +471,81 @@ jedoch, dass einige Anforderungen gar keine Klassifizierung besitzen
 oder besonders lange Titel haben. Um unnötige Upload‑Fehler zu
 vermeiden, setzt die Migration 0006_change_req_id_to_text den
 Datentyp der Spalte req_id auf TEXT (unbegrenzte Länge).
+
+BSI‑Katalog‑Validierung und Anforderungsdetails (Block 19)
+
+In Block 19 wurde der BSI‑Katalog‑Mechanismus weiterentwickelt, um die
+aus den PDFs extrahierten Anforderungen präziser abzubilden und eine
+grundlegende Validierung zu ermöglichen. Die wichtigsten Erweiterungen
+im Überblick:
+	•	Zusätzliche Felder pro Anforderung: Neben der Kennung req_id
+werden nun folgende Felder gespeichert:
+	•	title – der reine Titel der Maßnahme ohne BSI‑Code und ohne
+Klassifizierung.
+	•	classification – Klassifizierung der Maßnahme (B = Basis,
+S = Standard, H = Hoch). Fehlende Klassifizierungen
+bleiben null.
+	•	is_obsolete – ein Flag, das auf true gesetzt wird, wenn der
+Titel die Zeichenfolge „ENTFALLEN“ (Groß/Kleinschreibung
+ignoriert) enthält. Damit können entfallene Maßnahmen im UI
+gesondert markiert werden.
+	•	description – der normative Beschreibungs­text der Maßnahme.
+	•	Parser‑Verbesserungen: Der Parser sucht nun explizit nach der
+ersten Klassifizierung in Klammern und trennt sie mitsamt Titel vom
+nachfolgenden normativen Text. Wird keine Klassifizierung gefunden,
+wird die gesamte Zeile als Titel übernommen und der normative Text
+bleibt zunächst leer; nachfolgende Zeilen werden an den
+Beschreibungstext angehängt. Damit werden Kennung, Titel,
+Klassifizierung und Beschreibung korrekt getrennt und gespeichert.
+	•	Deduplication und Konsistenz: Wie bereits in Block 18 werden
+doppelte Module zusammengeführt. In Block 19 wird zusätzlich
+sichergestellt, dass Anforderungen eindeutig pro Modul identifiziert
+werden. Die neuen Felder erlauben später eine qualifizierte
+Validierung (z. B. Plausibilitätsprüfungen oder automatisierte
+Soll‑Ist‑Auswertungen).
+	•	Migrationen: Die neue Alembic‑Revision
+0007_add_req_extras fügt die Spalten
+title, classification und is_obsolete zur Tabelle
+bsi_requirements hinzu. Die Spalte req_id bleibt vom Typ
+TEXT (siehe 0006_change_req_id_to_text).
+
+Mit diesen Anpassungen ist der BSI‑Katalog bereit für weitere
+Automatisierungen, wie etwa die Bewertung der Anforderungen anhand
+der Projektquellen.
+
+Überarbeitung der PDF‑Extraktion (Block 20)
+
+Nach Tests mit der Bibliothek pdfplumber stellte sich heraus, dass
+deren layout‑bewusste Extraktion in unseren BSI‑Kompendiums‑PDFs zu
+unzuverlässigen Ergebnissen führte (fehlende Leerzeichen, falsche
+Worttrennungen). Aus diesem Grund wurde die Extraktion wieder auf
+PyPDF2 zurückgestellt. PyPDF2 liefert zwar nur Fließtext ohne
+ausgeprägte Layout‑Informationen, bietet in unserem Szenario aber die
+stabileren Ergebnisse.
+
+Die wichtigsten Anpassungen im Zuge dieser Überarbeitung:
+	•	Entfernung von pdfplumber: Das Paket pdfplumber wurde aus
+requirements.txt entfernt. _extract_pdf_text nutzt nun
+ausschließlich PyPDF2 zur Textextraktion. Die zuvor genutzte
+Integration von pdfplumber ist damit zurückgenommen.
+	•	Vereinfachte Heuristiken: Die Heuristik zur Worttrennung in
+_cleanup_description wurde reduziert. Insbesondere werden keine
+Leerzeichen mehr vor häufigen Präpositionen eingefügt, da dies zu
+unnatürlichen Worttrennungen geführt hat. Es bleiben lediglich
+einfache Regeln zum Entfernen von Silbentrennungen und zum Einfügen
+von Leerzeichen nach Satzzeichen und vor Großbuchstaben erhalten.
+	•	Erweiterte Modul‑Erkennung: Der Parser erkennt jetzt neben
+Bullet‑Zeilen auch Untermodule, die als Code mit zwei oder mehr
+Zahlenblöcken beginnen (z. B. DER.2.1 oder OPS.1.1). Diese
+Erkennung greift auch dann, wenn das Bullet‑Symbol bei der
+Extraktion verloren gegangen ist. Dadurch werden Untermodule wie
+«DER.2.1 Behandlung von Sicherheitsvorfällen», «DER.2.2 Vorsorge für
+die IT‑Forensik» und «DER.2.3 Bereinigung weitreichender
+Sicherheitsvorfälle» korrekt als eigenständige Module erkannt und
+erhalten ihren eigenen Titel. Die bisherige Bullet‑Erkennung bleibt
+ergänzend bestehen.
+
+Mit diesen Änderungen kehren wir zu einer robusteren, wenn auch
+einfacheren Extraktionsstrategie zurück. Weitere Verbesserungen der
+Beschreibungstexte können durch manuelle Nachbearbeitung oder zukünftige
+Parser‑Updates erfolgen.

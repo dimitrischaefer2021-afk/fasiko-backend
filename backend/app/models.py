@@ -311,12 +311,27 @@ class BsiRequirement(Base):
     module_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("bsi_modules.id", ondelete="CASCADE"), nullable=False
     )
-    # req_id enthält den vollständigen BSI‑Code inklusive Titel und Klassifizierung.
-    # Da manche Anforderungen keine Klassifizierung besitzen oder längere Titel
-    # beinhalten, kann die Kennung sehr lang werden. Um Datenbankfehler zu
-    # vermeiden, verwenden wir den Typ ``Text``, der in PostgreSQL keine
-    # Längenbeschränkung besitzt.
+    # Kennung der Anforderung: vollständiger BSI‑Code inklusive Titel und
+    # Klassifizierung. Da manche Anforderungen sehr lange Titel besitzen oder
+    # keine Klassifizierung enthalten, verwenden wir für die Kennung den Typ
+    # ``Text`` (unbegrenzte Länge). Die eigentliche Titel‑ und
+    # Klassifizierungsinformation wird zusätzlich in den Feldern
+    # ``title`` und ``classification`` gespeichert.
     req_id: Mapped[str] = mapped_column(Text, nullable=False)
+
+    # Reiner Titel der Anforderung (ohne Klassifizierung und ohne Code).
+    title: Mapped[str] = mapped_column(String(1000), nullable=False)
+
+    # Klassifizierung der Anforderung: ``B`` für Basis, ``S`` für Standard,
+    # ``H`` für Hoch oder ``None`` wenn nicht angegeben.
+    classification: Mapped[str | None] = mapped_column(String(1), nullable=True)
+
+    # Ob die Anforderung als entfallen gekennzeichnet ist (``ENTFALLEN`` im Titel).
+    is_obsolete: Mapped[bool] = mapped_column(
+        Integer, nullable=False, default=0
+    )  # 0 = False, 1 = True
+
+    # Ausführliche normative Beschreibung der Maßnahme (Markdown oder Plaintext).
     description: Mapped[str] = mapped_column(Text, nullable=False)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
