@@ -137,16 +137,8 @@ def _cleanup_description(text: str) -> str:
         return text
     import re
 
-    # Entferne Silbentrennungen innerhalb von Wörtern.
-    #
-    # In den PDF‑Dateien werden Wörter häufig über Zeilen hinweg mit einem
-    # Bindestrich und anschließendem Zeilenumbruch oder Leerzeichen
-    # getrennt (z. B. "wol- len" oder "Konfigura- tion"). Solche
-    # Trennstriche erkennen wir daran, dass nach dem Bindestrich
-    # mindestens ein Whitespace folgt. Echte Bindestriche wie in
-    # "SAP-ERP" bleiben erhalten, da dort kein Leerzeichen nach dem
-    # Bindestrich steht.
-    text = re.sub(r"(?<=[A-Za-zÄÖÜäöüß])-\s+(?=[A-Za-zÄÖÜäöüß])", "", text)
+    # Entferne Silbentrennung innerhalb von Wörtern
+    text = re.sub(r"(?<=[A-Za-zÄÖÜäöüß])-(?=[a-zäöüß])", "", text)
     # Leerzeichen nach Punkt oder Komma, falls keins vorhanden
     text = re.sub(r"([\.,])(?!\s)", r"\1 ", text)
     # Leerzeichen nach schließender Klammer vor Buchstaben oder Zahlen
@@ -193,46 +185,10 @@ def _cleanup_description(text: str) -> str:
     # PDF-Layouts. Diese ersetzen bekannte Problemstellen wie "obdie" -> "ob die"
     # und "obsie" -> "ob sie". Weitere Fehlerbilder können hier ergänzt
     # werden, falls sie im Laufe der Nutzung auffallen.
-    # Ersetze bekannte, häufig auftretende Worttrennungen, die durch das
-    # PDF-Layout entstehen. Diese Liste kann bei Bedarf erweitert werden.
     corrections = {
         "obdie": "ob die",
         "obsie": "ob sie",
         "verb indlich": "verbindlich",
-        # Allgemeine Worttrennungen aus BSI-PDFs
-        "Par ameter": "Parameter",
-        "Profilpar ameter": "Profilparameter",
-        "Anfor derung": "Anforderung",
-        "Anfor derungen": "Anforderungen",
-        "Ges amtberechtigung": "Gesamtberechtigung",
-        "Geme insam": "Gemeinsam",
-        "E instellungen": "Einstellungen",
-        "Bus iness": "Business",
-        "Net z": "Netz",
-        "E instiegspunkt": "Einstiegspunkt",
-        "Cont inuity": "Continuity",
-        "Adm inistrierende": "Administrierende",
-        "Adm inistrierender": "Administrierender",
-        "Adm inistrator": "Administrator",
-        "Mand ate": "Mandate",
-        "Konfig urieren": "Konfigurieren",
-        # Weitere spezifische Korrekturen auf Basis von Fehleranalysen
-        "sokonfiguriert": "so konfiguriert",
-        "sokonfigurieren": "so konfigurieren",
-        "H intergrund": "Hintergrund",
-        "def inierte": "definierte",
-        "def inierten": "definierten",
-        "def iniert": "definiert",
-        "Netzund": "Netz- und",
-        "Zeichenko dierung": "Zeichencodierung",
-        "Clickjack ing": "Clickjacking",
-        "Cross-Site-Script ing": "Cross-Site-Scripting",
-        "S ame Site": "Same Site",
-        "m indestens": "mindestens",
-        "Anfor derung": "Anforderung",
-        "Anfor derungen": "Anforderungen",
-        "def inierte Schnittstellen": "definierte Schnittstellen",
-        "def inierten IT": "definierten IT",
     }
     for bad, good in corrections.items():
         text = text.replace(bad, good)
@@ -385,11 +341,6 @@ def _parse_modules(text: str) -> List[
                 # Ermittle Modulpräfix aus dem Match oder verwende das aktuelle Modul
                 mod_prefix = rm.group(1) if rm.group(1) else current_code
                 number = rm.group(2)
-                # BSI‑Anforderungskennungen sollten maximal drei Ziffern umfassen. Sehr lange
-                # Nummern (z. B. "1550") deuten auf fehlerhafte Extraktionen oder
-                # verlinkte Dateien hin. Solche Einträge werden übersprungen.
-                if len(number) > 3:
-                    continue
                 remainder = rm.group(3).strip()
 
                 # Suche nach der ersten Klassifizierung (B|S|H) in Klammern. Wenn
@@ -421,8 +372,18 @@ def _parse_modules(text: str) -> List[
                 )
             else:
                 # Zeile gehört zur letzten Anforderung (Fortsetzung des Beschreibungstexts)
+                # Füge nur dann an, wenn es einen vorherigen Requirementeintrag gibt und die
+                # vorherige Anforderung nicht als entfallen markiert wurde. Bei entfallenen
+                # Anforderungen (ENTFALLEN im Titel) soll der Beschreibungstext nicht mit
+                # nachfolgenden Zeilen (z. B. Abschnittsüberschriften) erweitert werden.
                 if current_reqs and stripped:
                     last_req_id, last_title, last_class, last_obsolete, last_desc = current_reqs[-1]
+                    # Wenn die letzte Anforderung entfallen ist, überspringe alle
+                    # nachfolgenden Zeilen bis zum nächsten Requirement oder Modul. So
+                    # verhindern wir, dass Abschnittsüberschriften wie "3.3. Anforderungen…"
+                    # oder "IT-Grundschutz" fälschlich in die Beschreibung aufgenommen werden.
+                    if last_obsolete:
+                        continue
                     # Prüfe, ob die neue Zeile eine Klassifikation (B|S|H) am Anfang enthält,
                     # wenn bislang keine Klassifikation gesetzt ist. Wenn ja, entferne sie aus der
                     # Zeile und setze die Klassifikation. So werden Klassifizierungen, die

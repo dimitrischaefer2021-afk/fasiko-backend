@@ -515,37 +515,38 @@ der Projektquellen.
 
 Überarbeitung der PDF‑Extraktion (Block 20)
 
-Nach Tests mit der Bibliothek pdfplumber stellte sich heraus, dass
-deren layout‑bewusste Extraktion in unseren BSI‑Kompendiums‑PDFs zu
-unzuverlässigen Ergebnissen führte (fehlende Leerzeichen, falsche
-Worttrennungen). Aus diesem Grund wurde die Extraktion wieder auf
-PyPDF2 zurückgestellt. PyPDF2 liefert zwar nur Fließtext ohne
-ausgeprägte Layout‑Informationen, bietet in unserem Szenario aber die
-stabileren Ergebnisse.
+Nach weiteren Tests und Rückmeldungen wurde die PDF‑Extraktion erneut
+überarbeitet. Wir setzen wieder auf pdfplumber als
+primäres Werkzeug, da es eine layout‑bewusste Extraktion ermöglicht,
+die Zeilenumbrüche, Einrückungen und Listen aus dem PDF besser
+rekonstruiert ￼. Um die Wortabstände zu
+verbessern, werden bei page.extract_text spezifische Parameter
+(x_tolerance=2, line_overlap=0.5) genutzt. Sollte pdfplumber nicht
+installiert sein oder fehlschlagen, greift das System automatisch
+auf PyPDF2 als Fallback zurück.
 
 Die wichtigsten Anpassungen im Zuge dieser Überarbeitung:
-	•	Entfernung von pdfplumber: Das Paket pdfplumber wurde aus
-requirements.txt entfernt. _extract_pdf_text nutzt nun
-ausschließlich PyPDF2 zur Textextraktion. Die zuvor genutzte
-Integration von pdfplumber ist damit zurückgenommen.
-	•	Vereinfachte Heuristiken: Die Heuristik zur Worttrennung in
-_cleanup_description wurde reduziert. Insbesondere werden keine
-Leerzeichen mehr vor häufigen Präpositionen eingefügt, da dies zu
-unnatürlichen Worttrennungen geführt hat. Es bleiben lediglich
-einfache Regeln zum Entfernen von Silbentrennungen und zum Einfügen
-von Leerzeichen nach Satzzeichen und vor Großbuchstaben erhalten.
-	•	Erweiterte Modul‑Erkennung: Der Parser erkennt jetzt neben
-Bullet‑Zeilen auch Untermodule, die als Code mit zwei oder mehr
-Zahlenblöcken beginnen (z. B. DER.2.1 oder OPS.1.1). Diese
-Erkennung greift auch dann, wenn das Bullet‑Symbol bei der
-Extraktion verloren gegangen ist. Dadurch werden Untermodule wie
-«DER.2.1 Behandlung von Sicherheitsvorfällen», «DER.2.2 Vorsorge für
-die IT‑Forensik» und «DER.2.3 Bereinigung weitreichender
-Sicherheitsvorfälle» korrekt als eigenständige Module erkannt und
-erhalten ihren eigenen Titel. Die bisherige Bullet‑Erkennung bleibt
-ergänzend bestehen.
+	•	Reaktivierung von pdfplumber: Das Paket pdfplumber wird
+erneut verwendet und in requirements.txt aufgenommen. _extract_pdf_text
+versucht zunächst, den Text mit pdfplumber zu extrahieren; nur wenn
+dies fehlschlägt, wird auf PyPDF2 zurückgegriffen.
+	•	Parameter für Wortabstände: Beim Aufruf von page.extract_text
+werden x_tolerance=2 und line_overlap=0.5 gesetzt. Diese
+Parameter sorgen laut pdfplumber‑Dokumentation dafür, dass Wörter
+mit geringen Abständen zusammengeführt und Zeilenüberlappungen
+besser erkannt werden ￼.
+	•	Titelerkennung und Untermodul‑Logik: Die Module werden weiterhin
+anhand ihrer Codes erkannt; Bullet‑Zeichen und tiefere Codes (z. B.
+DER.2.1) werden als neue Module interpretiert. Titel werden am
+frühesten Auftreten eines Bullets, eines weiteren Modulcodes oder
+eines Klassifikationszusatzes (z. B. R3 Informationsverbund) geschnitten.
+	•	Bereinigungsheuristiken: Die Funktion _cleanup_description
+entfernt weiterhin Silbentrennungen, fügt Leerzeichen nach Satzzeichen
+ein und trennt zusammengeklebte Groß-/Kleinbuchstaben. Zusätzlich wird
+eine vorsichtige Präpositionsheuristik verwendet, um fehlende
+Leerzeichen vor häufigen Präpositionen nachträglich einzufügen.
 
-Mit diesen Änderungen kehren wir zu einer robusteren, wenn auch
-einfacheren Extraktionsstrategie zurück. Weitere Verbesserungen der
-Beschreibungstexte können durch manuelle Nachbearbeitung oder zukünftige
-Parser‑Updates erfolgen.
+Mit dieser Anpassung kombinieren wir die Vorteile von pdfplumber (Layout
+und Listen) mit fallback‑Sicherheit durch PyPDF2. Wenn weiterhin
+Worttrennungsprobleme auftreten, können manuelle Nachbearbeitungen oder
+zukünftige Parser‑Updates helfen, die Qualität weiter zu verbessern.

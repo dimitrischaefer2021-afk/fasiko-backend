@@ -406,32 +406,41 @@ und die Persistenz der extrahierten Module und Anforderungen
 beschreibt. Dieses Änderungsprotokoll wurde entsprechend erweitert.
 
 Block 20 – Überarbeitung der PDF‑Extraktion
-•   Entfernung von pdfplumber: Tests mit pdfplumber zeigten
-unerwartete Worttrennungen und fehlende Leerzeichen. Daher wurde
-die Bibliothek wieder entfernt. requirements.txt enthält jetzt
-nur noch PyPDF2 für die PDF‑Extraktion.
-•   Rückkehr zu PyPDF2: Die Funktion _extract_pdf_text in
-backend/app/api/bsi_catalogs.py nutzt nun ausschließlich
-PyPDF2. Das sorgt für stabilere Ergebnisse, auch wenn
-Zeilenumbrüche und Aufzählungen nicht perfekt abgebildet werden.
-•   Vereinfachte Text‑Heuristik: Die zuvor eingeführte Heuristik,
-Leerzeichen vor Präpositionen einzufügen, wurde entfernt, da sie zu
-unnatürlichen Worttrennungen führte. _cleanup_description setzt
-nur noch grundlegende Regeln um: Silbentrennungen entfernen,
-Leerzeichen nach Satzzeichen und vor Großbuchstaben einfügen sowie
-Mehrfach‑Leerzeichen reduzieren.
-•   Verbesserte Modul‑Erkennung: Der Parser erkennt nun auch
-Untermodulcodes mit zwei oder mehr numerischen Segmenten (z. B.
-DER.2.1, OPS.1.1) als neue Module – selbst wenn das
-Aufzählungszeichen bei der Extraktion fehlt. Dies stellt sicher,
-dass Untermodule wie «DER.2.1 Behandlung von Sicherheitsvorfällen»,
-«DER.2.2 Vorsorge für die IT‑Forensik» und «DER.2.3 Bereinigung
-weitreichender Sicherheitsvorfälle» korrekt als eigenständige
-Bausteine gespeichert werden. Die bisherige Erkennung von Bullet‑
-Zeilen bleibt bestehen.
-•   Dokumentation angepasst: Der Abschnitt „Überarbeitung der
-PDF‑Extraktion“ in docs/TRUTH.md erläutert die Gründe für den
-Verzicht auf pdfplumber und die Anpassungen am Parser. So bleibt
-die Wahrheit im Repository konsistent.
-•   Keine Datenbank‑Änderung erforderlich: Die Änderungen betreffen
-nur die Extraktion. Modelle und Migrationen bleiben unverändert.
+•   Reaktivierung von pdfplumber: Aufgrund von Nutzerfeedback wurde
+pdfplumber wieder in den Projektcode aufgenommen. Die Bibliothek
+ermöglicht eine layout‑bewusste Extraktion und rekonstruiert
+Zeilenumbrüche, Einrückungen und Listen genauer als PyPDF2. In der
+Funktion _extract_pdf_text wird nun zuerst versucht, den Text
+mittels pdfplumber mit optimierten Parametern (x_tolerance=2,
+line_overlap=0.5) zu extrahieren. Wenn dies fehlschlägt oder
+pdfplumber nicht installiert ist, dient PyPDF2 weiterhin als
+Fallback.
+•   Anpassung der Requirements: requirements.txt enthält wieder
+den Eintrag pdfplumber==0.10.3. PyPDF2 bleibt als Fallback
+erhalten.
+•   Titelerkennung & Modul‑Logik: Die Modul‑Erkennung wurde
+erweitert, um sowohl Bullet‑Zeilen als auch tiefere Modulcodes
+(mehrere numerische Segmente) als neue Module zu erkennen. Darüber
+hinaus schneidet der Parser Titel ab dem ersten Bullet, einem
+weiteren Modulcode oder einem Klassifikationszusatz (z. B.
+R3 Informationsverbund) ab, damit lange Titel den DB‑Speicher
+nicht überschreiten.
+•   Präzise Text‑Heuristiken: _cleanup_description entfernt
+weiterhin Silbentrennungen, fügt Leerzeichen nach Satzzeichen
+ein und trennt zusammengeklebte Groß-/Kleinbuchstaben. Außerdem
+wird nun eine vorsichtige Präpositionsheuristik eingesetzt, um
+fehlende Leerzeichen vor häufigen Präpositionen nachträglich
+einzufügen. Dadurch werden Wortklebungen (z. B. „Clientsmit“)
+entzerrt, ohne neue unnatürliche Splits zu erzeugen.
+•   Verbesserte Untermodul‑Erkennung: Der Parser erkennt
+Untermodulcodes wie DER.2.1 und OPS.1.1 weiterhin korrekt,
+selbst wenn das Bullet‑Zeichen im PDF verloren geht. Die Liste
+von Bullet‑Symbolen wurde erweitert, um verschiedene Unicode‑
+Aufzählungszeichen zu erfassen.
+•   Dokumentation angepasst: docs/TRUTH.md beschreibt nun die
+Rückkehr zu pdfplumber, die Parametereinstellungen und den
+Fallback‑Mechanismus. Dieses Änderungsprotokoll wurde
+entsprechend aktualisiert.
+•   Keine Datenbank‑Änderungen: Die Änderungen betreffen nur den
+Parser und die PDF‑Extraktion; an den Datenmodellen und
+Migrationen war keine Anpassung erforderlich.
