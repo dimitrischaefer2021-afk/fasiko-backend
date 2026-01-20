@@ -564,13 +564,13 @@ entfernt. Aufzählungszeichen (Bullets) bleiben als separate Zeilen
 erhalten.
 
 Die wichtigsten Aspekte der Normalisierung:
-	•	Rohdatenpersistenz – Jede Anforderung speichert nun zusätzlich
+•	Rohdatenpersistenz – Jede Anforderung speichert nun zusätzlich
 die Felder raw_title und raw_description mit dem
 unveränderten Text aus der PDF‑Extraktion. Die bestehenden Felder
 title und description enthalten nach der Normalisierung die
 korrigierte Fassung. Alte Kataloge ohne diese Rohdaten bleiben
 weiterhin gültig; die Spalten können None sein.
-	•	8B‑Modell – Die Normalisierung verwendet ausschließlich das
+•	8B‑Modell – Die Normalisierung verwendet ausschließlich das
 kleine LLM‑Modell (8‑B‑Variante) über die Ollama‑API. Das 70B‑Modell
 bleibt weiterhin nur für die initiale FaSiKo‑Generierung reserviert.
 Der Prompt weist das Modell strikt an, nur Formatierungsfehler zu
@@ -600,7 +600,7 @@ OpenAI‑kompatible Route /v1/chat/completions zurück. Dieser
 mehrstufige Fallback benötigt keine Benutzerinteraktion und stellt
 sicher, dass die Normalisierung mit allen unterstützten
 Ollama‑Versionen funktioniert.
-	•	Asynchroner Job – Die Normalisierung erfolgt als
+•	Asynchroner Job – Die Normalisierung erfolgt als
 Hintergrundjob (Typ normalize) über den bestehenden
 Job‑Service. Ein neuer Endpunkt
 POST /api/v1/bsi/catalogs/{catalog_id}/normalize
@@ -608,16 +608,16 @@ startet den Job. Optional kann der module_code Parameter
 genutzt werden, um nur die Anforderungen eines einzelnen Moduls zu
 normalisieren. Der Fortschritt und der Status des Jobs können über
 GET /api/v1/jobs/{id} verfolgt werden.
-	•	Vorschau – Ein weiterer Endpunkt
+•	Vorschau – Ein weiterer Endpunkt
 GET /api/v1/bsi/catalogs/{catalog_id}/normalize/preview bietet
 eine Vorschau der Normalisierung. Er gibt für die ersten limit
 Anforderungen (standardmäßig 3) eines Katalogs oder Moduls jeweils
 den Rohtext und die normalisierte Fassung zurück, ohne sie zu
 speichern. Damit können Nutzer das Ergebnis prüfen, bevor sie den
 Job starten.
-	•	Fehlerbehandlung – Schlägt der LLM‑Aufruf während der
+•	Fehlerbehandlung – Schlägt der LLM‑Aufruf während der
 Normalisierung fehl, hängt das Verhalten vom Profil ab: In der
-Entwicklungsumgebung (ENV_PROFILE != 'prod') wird der
+Entwicklungsumgebung (ENV_PROFILE != ‘prod’) wird der
 unveränderte Rohtext übernommen und der Fehler im Job‑Status
 vermerkt. In der Produktion bricht der Job mit status=failed
 ab und liefert eine verständliche Fehlermeldung. Die bisherige
@@ -650,13 +650,13 @@ wurde ein zentraler LLM‑Client (backend/app/llm_client.py)
 eingeführt. Dieser Client kapselt die Kommunikation mit dem
 Ollama‑Server und versucht automatisch nacheinander die folgenden
 HTTP‑Routen:
-	1.	/api/chat – klassischer Chat‑Endpoint, geeignet für
+1.	/api/chat – klassischer Chat‑Endpoint, geeignet für
 mehrteilige Unterhaltungen. Einige ältere Ollama‑Versionen
 unterstützen ausschließlich diesen Pfad.
-	2.	/api/generate – einfacher Generate‑Endpoint, der einen
+2.	/api/generate – einfacher Generate‑Endpoint, der einen
 Prompt vervollständigt. Dieser Endpunkt wird verwendet, wenn
 /api/chat nicht vorhanden ist.
-	3.	/v1/chat/completions – OpenAI‑kompatibler Endpoint, der
+3.	/v1/chat/completions – OpenAI‑kompatibler Endpoint, der
 seit 2025 von Ollama bereitgestellt wird. Er ist Bestandteil
 einer neuen API‑Struktur und entspricht weitgehend dem
 OpenAI‑Chatformat.
@@ -675,3 +675,65 @@ Dieser Umbau stellt sicher, dass Chat‑Funktionen, Websearch‑Chat,
 Bearbeitung, Normalisierung und Modell‑Checks weiterhin mit allen
 Ollama‑Versionen funktionieren, ohne dass der Nutzer Endpunkte
 manuell auswählen oder anpassen muss.
+
+Verbesserte Normalisierung und DEV/PROD‑Modus (Block 22)
+
+In Block 22 wurde der Text‑Normalizer verfeinert und an unterschiedliche
+Umgebungsprofile angepasst. Die Kernidee bleibt unverändert: Der
+Normalizer repariert weiterhin ausschließlich Formatierungsfehler
+in den aus PDF‑Katalogen extrahierten Anforderungstexten (Titel und
+Beschreibung). Neu ist jedoch, dass das Verhalten nun zwischen
+Entwicklungs‑ und Produktionsumgebung unterscheidet und zusätzliche
+Heuristiken einsetzt, um Artefakte zu erkennen und zu entfernen.
+
+DEV‑Modus (ENV_PROFILE ≠ prod): In Entwicklungsumgebungen
+wird jede Anforderung über das 8B‑Modell und anschließend mit
+deterministischen Heuristiken bereinigt. Das Ergebnis wird nicht
+mehr in die Datenbank geschrieben. Stattdessen liefert der
+Hintergrundjob ein Vorschaudokument zurück (result_data), das
+für jede Anforderung den Rohtext, das LLM‑Ergebnis, den finalen Text
+und eine Reihe von Flags enthält. Diese Flags zeigen an, ob das LLM
+aufgerufen wurde (llm_used), ob sich der Text dadurch verändert hat
+(llm_changed), ob Heuristiken angewendet wurden (heuristic_used)
+sowie ob Artefakte vor und nach der Bereinigung vorhanden waren
+(artifact_before, artifact_after). Zusätzlich gibt eine
+Summary‑Struktur im Preview an, für wie viele Anforderungen das LLM
+genutzt wurde, wie oft Änderungen erfolgten, wie häufig
+Heuristiken eingriffen und wie viele Artefakte nach der Reinigung
+verblieben. Wenn nach der Bereinigung noch Artefakte gefunden werden,
+wird der Job zwar als abgeschlossen markiert, enthält aber im Feld
+error eine Warnung (z. B. „WARN: Normalization incomplete for
+5/120 requirements; Artefakte verbleiben.“). Somit gibt es
+im DEV‑Modus keine „stillen Erfolge“ mehr – jeder unvollständig
+bereinigte Text wird transparent angezeigt.
+
+PROD‑Modus (ENV_PROFILE == prod): In Produktionsumgebungen
+persistiert der Normalizer weiterhin die bereinigten Texte. Rohdaten
+(raw_title und raw_description) werden nur gesetzt, wenn sie noch
+nicht vorhanden sind. Treten beim LLM‑Aufruf Fehler auf, bricht der
+Job ab (status = failed) und liefert eine verständliche
+Fehlermeldung zurück. In prod werden keine Heuristik‑Warnungen
+geliefert, weil nur vollständig bereinigte Texte gespeichert werden.
+
+Heuristiken und Artefakterkennung: Zusätzlich zum LLM‑Output
+wird nun eine Reihe konservativer Regeln angewendet: Zeilenumbrüche
+werden in Leerzeichen umgewandelt, mehrfache Leerzeichen reduziert,
+getrennte Silben wie „E influss“ zu „Einfluss“ zusammengeführt,
+Bindestrich‑Zeilenumbrüche wie „Sicher- heit“ korrigiert und Bullets
+(„•“) in eigene Zeilen gestellt. Eine kleine Funktion erkennt
+häufige Extraktionsartefakte anhand dieser Muster und unterstützt die
+Flagberechnung.
+
+Modellbezeichnungen: Seit Block 22 ersetzt der zentrale
+LLM‑Client in Entwicklungsumgebungen alte Modellbezeichnungen wie
+llama3.1:8b automatisch durch die neue Form (llama3:8b). In
+Produktionsumgebungen führt die Verwendung veralteter Namen zu einem
+Fehler. Diese Regel verhindert unerwartete Fallbacks und macht
+Modelländerungen transparent.
+
+Diese Erweiterungen verbessern die Nachvollziehbarkeit und Qualität
+der Normalisierung erheblich. Entwickler können in der Vorschau
+sehen, ob das LLM tatsächlich wirkt und welche Artefakte entfernt
+wurden, ohne dass bereits Daten überschrieben werden. In der
+Produktion bleiben die stabilen Persistenz‑ und Fehlerregeln
+erhalten.

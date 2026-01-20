@@ -29,7 +29,7 @@ from typing import List, Dict, Optional
 
 import httpx
 
-from .settings import OLLAMA_URL
+from .settings import OLLAMA_URL, ENV_PROFILE
 
 
 async def _extract_api_chat(data: Dict) -> Optional[str]:
@@ -81,6 +81,18 @@ async def call_llm(messages: List[Dict[str, str]], model: str) -> str:
     """
     if not messages:
         raise ValueError("messages must not be empty")
+    # Modellnamen normalisieren: Ab 2025 existieren die Unterversionsbezeichnungen
+    # (z. B. "llama3.1:8b") in Ollama nicht mehr. In der Entwicklungsumgebung
+    # wird ein solcher Name automatisch auf die neue Schreibweise ("llama3:8b")
+    # abgebildet. In der Produktion führt die Angabe eines unbekannten Modells
+    # zu einem Fehler. Dies verhindert stille Fallbacks.
+    if "llama3.1" in model:
+        if ENV_PROFILE != "prod":
+            model = model.replace("llama3.1", "llama3")
+        else:
+            raise Exception(
+                f"Ungültiger Modellname '{model}'. Bitte verwenden Sie die neue Bezeichnung ohne Unterversion, z. B. 'llama3:8b'."
+            )
     # Extrahiere Prompt und System für den /api/generate‑Fallback
     system_parts: List[str] = []
     user_parts: List[str] = []

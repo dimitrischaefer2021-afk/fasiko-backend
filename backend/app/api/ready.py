@@ -1,10 +1,10 @@
 """
-    Ready‑Endpoint des FaSiKo‑Backends (Block 06).
+Ready‑Endpoint des FaSiKo‑Backends (Block 06).
 
-    Dieser Endpunkt prüft die Betriebsbereitschaft des Systems. Er
-    testet, ob die Datenbank erreichbar ist, ob die LLM‑Modelle über
-    Ollama verfügbar sind und ob der SearXNG‑Dienst antwortet.
-    Die Ergebnisse werden als Liste von `ReadyComponent` zurückgegeben.
+Dieser Endpunkt prüft die Betriebsbereitschaft des Systems. Er
+testet, ob die Datenbank erreichbar ist, ob die LLM‑Modelle über
+Ollama verfügbar sind und ob der SearXNG‑Dienst antwortet.
+Die Ergebnisse werden als Liste von `ReadyComponent` zurückgegeben.
 """
 
 from __future__ import annotations
@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 from typing import List
 
+import httpx  # hinzugefügt für den SearXNG‑Check
 
 from sqlalchemy import text
 from fastapi import APIRouter
@@ -47,6 +48,12 @@ async def _check_ollama_model(model_name: str) -> ReadyComponent:
         await call_llm(messages=messages, model=model_name)
         return ReadyComponent(name=comp_name, status="ok")
     except Exception as exc:
+        # In der Entwicklungsumgebung ist das große 70B‑Modell optional.
+        # Wenn es nicht geladen ist oder der Modellname nicht existiert,
+        # geben wir einen Warnstatus zurück, damit der gesamte Ready‑Check
+        # nicht fehlschlägt. In Produktion bleibt es ein Fehler.
+        if ENV_PROFILE != "prod" and model_name == MODEL_FASIKO_CREATE_70B:
+            return ReadyComponent(name=comp_name, status="warn", message=str(exc))
         return ReadyComponent(name=comp_name, status="error", message=str(exc))
 
 async def _check_searxng() -> ReadyComponent:

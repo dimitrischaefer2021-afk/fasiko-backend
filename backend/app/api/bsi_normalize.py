@@ -19,7 +19,9 @@ from ..db import SessionLocal
 from ..models import BsiModule, BsiRequirement
 from ..api.jobs import jobs_store
 from ..schemas import JobStatus, JobOut, BsiNormalizationPreviewItem, BsiNormalizationPreviewOut
-from ..normalizer import run_normalize_job, _normalize_requirement
+# Importiere die neue Normalisierungs‑Pipeline. _normalize_requirement bleibt
+# erhalten für rückwärtige Kompatibilität, wird hier aber nicht genutzt.
+from ..normalizer import run_normalize_job, normalize_requirement_preview
 from datetime import datetime
 
 
@@ -133,12 +135,16 @@ async def preview_normalization(
             # Stelle sicher, dass Rohdaten vorhanden sind
             raw_title = req.raw_title or req.title
             raw_desc = req.raw_description or req.description
+            # Versuche, den Text mit dem LLM und Heuristiken zu normalisieren.
             try:
-                norm_title, norm_desc = await _normalize_requirement(req)
+                preview = await normalize_requirement_preview(req)
+                norm_title = preview["final_title"]
+                norm_desc = preview["final_description"]
             except Exception as exc:
+                # In der Entwicklungsumgebung liefern wir den Originaltext zurück,
+                # um die Vorschau nicht zu blockieren. In Produktion schlagen wir fehl.
                 from ..settings import ENV_PROFILE
                 if ENV_PROFILE != "prod":
-                    # Im Dev‑Modus Rohdaten übernehmen
                     norm_title = raw_title
                     norm_desc = raw_desc
                 else:

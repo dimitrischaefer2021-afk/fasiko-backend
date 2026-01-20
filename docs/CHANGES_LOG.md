@@ -472,14 +472,14 @@ GET /api/v1/jobs/{job_id} verfolgt werden.
 •   Neue Schemas: In backend/app/schemas.py wurden die
 Pydantic‑Modelle BsiNormalizationPreviewItem und
 BsiNormalizationPreviewOut ergänzt. Sie beschreiben die
-Struktur der Vorschauausgabe und wurden dem __all__-Tuple
+Struktur der Vorschauausgabe und wurden dem all-Tuple
 hinzugefügt.
 •   Anpassungen an CRUD: crud.create_bsi_catalog setzt bei der
 Anlage von Anforderungen die Rohdatenfelder raw_title und
 raw_description gleich den extrahierten Werten, damit sie für
 die Normalisierung verfügbar sind.
 •   API‑Registrierung: Der neue Router wird in
-backend/app/api/__init__.py und backend/app/main.py unter
+backend/app/api/init.py und backend/app/main.py unter
 dem Prefix /api/v1 eingebunden, sodass die Normalisierungs‑
 Endpunkte im Swagger verfügbar sind.
 •   Dokumentation: In docs/TRUTH.md wurde ein neuer Abschnitt
@@ -537,19 +537,28 @@ dann zuverlässig, wenn nur ein einziger Endpoint verfügbar
 ist. Die Änderung betrifft nur die interne
 Kommunikationslogik; die öffentlichen API‑Endpunkte der
 Anwendung bleiben unverändert.
-    •   **Block 20‑Fix – Vereinfachter LLM‑Client:** Da der
-    Fallback‑Mechanismus in älteren Ollama‑Versionen nicht
-    funktionierte und häufig 404‑Fehler auf den Endpunkten
-    ``/api/generate`` und ``/v1/chat/completions`` erzeugte,
-    wurde der zentrale LLM‑Client dauerhaft auf einen einzigen
-    Endpoint reduziert: ``/api/chat``. Dies ist der einzige
-    Endpoint, der in unserer Umgebung zuverlässig antwortet.
-    Die Fallback‑Liste wird nicht mehr durchlaufen, sondern
-    ``call_llm`` sendet alle Anfragen direkt an ``/api/chat`` und
-    gibt bei Nichtverfügbarkeit eine Ausnahme zurück. Diese
-    Änderung ist Teil des Block 20‑Fixes, da sie die
-    Normalisierung sowie sämtliche Chat‑ und Generierungs‑
-    Funktionen stabilisiert. Sollte eine zukünftige Ollama‑
-    Version weitere Endpoints unterstützen, kann der Client
-    entsprechend erweitert werden.
+•   Block 20‑Fix – Vereinfachter LLM‑Client: Da der
+Fallback‑Mechanismus in älteren Ollama‑Versionen nicht
+funktionierte und häufig 404‑Fehler auf den Endpunkten
+/api/generate und /v1/chat/completions erzeugte,
+wurde der zentrale LLM‑Client dauerhaft auf einen einzigen
+Endpoint reduziert: /api/chat. Dies ist der einzige
+Endpoint, der in unserer Umgebung zuverlässig antwortet.
+Die Fallback‑Liste wird nicht mehr durchlaufen, sondern
+call_llm sendet alle Anfragen direkt an /api/chat und
+gibt bei Nichtverfügbarkeit eine Ausnahme zurück. Diese
+Änderung ist Teil des Block 20‑Fixes, da sie die
+Normalisierung sowie sämtliche Chat‑ und Generierungs‑
+Funktionen stabilisiert. Sollte eine zukünftige Ollama‑
+Version weitere Endpoints unterstützen, kann der Client
+entsprechend erweitert werden.
 TRUTH.md wurde entsprechend erweitert.
+
+Block 22 – Verbesserte Normalisierung und DEV/PROD‑Modus
+• Der Normalizer wurde um einen Vorschau‑Modus erweitert. In Entwicklungsumgebungen (ENV_PROFILE ≠ prod) werden alle Anforderungen weiterhin durch das 8B‑Modell und anschließende Heuristiken bereinigt, jedoch nicht in der Datenbank gespeichert. Stattdessen liefert der Normalisierungsjob ein result_data‑Feld mit den bereinigten Titeln und Beschreibungen sowie einer Liste von Flags (llm_used, llm_changed, heuristic_used, artifact_before, artifact_after) und einer Zusammenfassung der Zählwerte.
+• Im DEV‑Modus markiert der Job den Status als completed, setzt progress auf 1.0 und trägt eine Warnung in job.error ein, wenn nach der Bereinigung noch Artefakte gefunden werden. Somit gibt es keine stillen Erfolge mehr.
+• In Produktionsumgebungen (ENV_PROFILE == prod) persistiert der Normalizer weiterhin. Rohtexte (raw_title/raw_description) werden nur gesetzt, wenn sie leer sind. Ein Fehler beim LLM‑Aufruf führt zum Abbruch des Jobs (status = failed) und hinterlegt die Fehlermeldung im error‑Feld.
+• Eine neue Funktion contains_artifacts erkennt typische PDF‑Extraktionsartefakte (getrennte Silben, Bindestrich‑Zeilenumbrüche, mehrfache Leerzeichen, Zeilenumbrüche) und wird zur Flagberechnung genutzt. Die Funktion apply_heuristics führt konservative Korrekturen durch (Zeilenumbrüche entfernen, Leerzeichen reduzieren, Silben zusammenführen, Bindestrich‑Trennungen entfernen, Aufzählungspunkte formatieren).
+• Das Preview‑Endpoint GET /api/v1/bsi/catalogs/{catalog_id}/normalize/preview nutzt nun die gleiche Pipeline wie der Job und zeigt den finalen normalisierten Text an. Fehlende LLM‑Antworten im DEV‑Modus führen nicht zu Fehlern; in prod wird ein HTTP 500 zurückgegeben.
+• Der zentrale LLM‑Client normalisiert Modellnamen mit Unterversionskennzeichnung (z. B. llama3.1:8b) in Entwicklungsumgebungen automatisch zu llama3:8b. In der Produktion löst ein solcher Modellname eine Exception aus. Diese Änderung verhindert unerwünschte Fallbacks auf andere Modelle.
+• docs/TRUTH.md wurde um einen neuen Abschnitt „Verbesserte Normalisierung und DEV/PROD‑Modus (Block 22)“ ergänzt, der die Funktionsweise, die Flags, die Heuristiken und die Unterschiede zwischen Entwicklungs‑ und Produktionsumgebung erklärt.

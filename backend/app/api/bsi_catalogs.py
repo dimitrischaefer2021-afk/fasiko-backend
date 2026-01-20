@@ -219,6 +219,68 @@ def _normalize_text(text: str) -> str:
         i += 1
     return "\n".join(normalized)
 
+# -----------------------------------------------------------------------------
+# Helferfunktionen für die Parserlogik
+#
+# Bei der PDF‑Extraktion können Requirement‑Codes (z. B. "SYS.3.2.2.A1")
+# über Zeilenumbrüche hinweg getrennt werden. `_join_broken_requirement_ids`
+# fügt solche Fragmente wieder zusammen, indem es Zeilen zusammenführt,
+# die auf ".A" oder ".A." enden und gefolgt werden von einer Zeile, die mit
+# einer Zahl beginnt. Dadurch werden Fälle wie "SYS.3.2.2.A" in einer Zeile
+# und "1 Festlegung ..." in der nächsten Zeile korrekt zu "SYS.3.2.2.A1
+# Festlegung ..." zusammengefügt.
+
+# -----------------------------------------------------------------------------
+# Helferfunktionen für die Parserlogik
+#
+# Insbesondere bei der PDF‑Extraktion von BSI‑Katalogen können Requirement‑Codes
+# (z. B. "SYS.3.2.2.A1") über Zeilenumbrüche hinweg getrennt werden. Das führt
+# dazu, dass die eigentliche Kennung "A1" in der nächsten Zeile steht und
+# unser Parser sie nicht erkennt. Die Funktion ``_join_broken_requirement_ids``
+# durchsucht eine Liste von Zeilen nach solchen Fragmenten und fügt sie
+# zusammen, sofern das nachfolgende Fragment mit einer Zahl beginnt. Dadurch
+# wird aus "SYS.3.2.2.A" und "1 Festlegung ..." wieder ein einziger String
+# "SYS.3.2.2.A1 Festlegung ...". Dies verbessert die Erkennungsrate von
+# Anforderungen in PDFs, bei denen die Formatierung uneinheitlich ist.
+
+from typing import List
+
+
+def _join_broken_requirement_ids(lines: List[str]) -> List[str]:
+    """Fügt Zeilenfragmente zusammen, wenn Requirement‑Kennungen über mehrere
+    Zeilen gebrochen wurden.
+
+    Ein Fragment wird erkannt, wenn die aktuelle Zeile auf ``.A`` oder ``.A.``
+    endet (optional gefolgt von Leerzeichen) und die nächste Zeile mit einer
+    Zahl beginnt. In diesem Fall werden beide Zeilen verkettet und die
+    nächste Zeile wird übersprungen.
+
+    Args:
+        lines: Liste der ursprünglichen Zeilen aus dem normalisierten PDF.
+
+    Returns:
+        Neue Liste von Zeilen, in der gebrochene Requirement‑Codes
+        zusammengeführt wurden.
+    """
+    joined: List[str] = []
+    i = 0
+    while i < len(lines):
+        current = lines[i].rstrip()
+        # Prüfe, ob die aktuelle Zeile auf ".A" (mit oder ohne Punkt) endet
+        if re.search(r"\.A\s*$", current) or re.search(r"\.A\.\s*$", current):
+            if i + 1 < len(lines):
+                nxt = lines[i + 1].lstrip()
+                # Wenn die nächste Zeile mit einer Zahl beginnt, wird sie an die
+                # aktuelle Zeile angehängt. Dies deckt Fälle wie "A1" oder
+                # "1 Festlegung ..." ab. Dabei werden überzählige Leerzeichen
+                # entfernt.
+                if re.match(r"^\d+", nxt):
+                    current = (current + nxt).strip()
+                    i += 1  # überspringe die nächste Zeile
+        joined.append(current)
+        i += 1
+    return joined
+
 
 def _parse_modules(text: str) -> List[
     Tuple[str, str, List[Tuple[str, str, str | None, bool, str]]]
@@ -249,7 +311,13 @@ def _parse_modules(text: str) -> List[
     current_code: str | None = None
     current_title: str | None = None
     current_reqs: List[Tuple[str, str, str | None, bool, str]] = []
-    for line in text.split("\n"):
+    # Zeilen aus dem normalisierten Text aufspalten
+    raw_lines = text.split("\n")
+    # Füge gegebenenfalls gebrochene Requirement‑IDs zusammen, um Fragmente zu
+    # vermeiden (z. B. ".A" + "1" → ".A1"). Dies verbessert das Parsing.
+    lines = _join_broken_requirement_ids(raw_lines)
+    # Verarbeite nun die bereinigten Zeilen
+    for line in lines:
         stripped = line.strip()
         # Prüfe auf Modulcode am Zeilenanfang (z. B. SYS.3.2.2 Titel). Wir
         # verwenden hier einen negativen Ausblick, damit Zeilen wie
