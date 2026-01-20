@@ -27,6 +27,7 @@ from .api.export import router as export_router  # Neu: Export‑Router
 from .api.bsi import router as bsi_router  # Neu: BSI‑Baustein‑Router
 from .api.sources import router as sources_router  # Neu: Quellen‑Router
 from .api.bsi_catalogs import router as bsi_catalogs_router  # Neu: BSI‑Katalog‑Router
+from .api.bsi_normalize import router as bsi_normalize_router  # Neu: Normalisierungs‑Router
 
 
 @asynccontextmanager
@@ -59,3 +60,4 @@ app.include_router(export_router, prefix="/api/v1")  # Registrierung des Export�
 app.include_router(bsi_router, prefix="/api/v1")  # Registrierung des BSI‑Routers
 app.include_router(sources_router, prefix="/api/v1")  # Registrierung des Quellen‑Routers
 app.include_router(bsi_catalogs_router, prefix="/api/v1")  # Registrierung des BSI‑Katalog‑Routers
+app.include_router(bsi_normalize_router, prefix="/api/v1")  # Registrierung des Normalisierungs‑Routers

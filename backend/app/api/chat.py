@@ -12,7 +12,7 @@ from datetime import datetime
 import uuid
 from typing import List
 
-import httpx
+# Kein direkter Import von httpx erforderlich, da LLM-Aufrufe über llm_client laufen
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Response
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
@@ -21,7 +21,8 @@ from ..db import get_db
 from .. import crud
 from .. import storage
 from .. import websearch
-from ..settings import MODEL_GENERAL_8B, OLLAMA_URL
+from ..settings import MODEL_GENERAL_8B
+from ..llm_client import call_llm
 from ..schemas import (
     ChatSessionCreate,
     ChatSessionOut,
@@ -103,13 +104,13 @@ def _to_message_detail(db: Session, msg) -> ChatMessageDetailOut:
 
 
 async def _call_llm(messages: List[dict]) -> str:
-    url = f"{OLLAMA_URL}/api/chat"
-    payload = {"model": MODEL_GENERAL_8B, "messages": messages, "stream": False}
-    async with httpx.AsyncClient() as client:
-        resp = await client.post(url, json=payload, timeout=600)
-        resp.raise_for_status()
-        data = resp.json()
-    return data.get("message", {}).get("content") or ""
+    """Verwendet den zentralen LLM‑Client für Chat‑Anfragen.
+
+    Diese Funktion ruft das LLM über den gemeinsamen Client ``call_llm``
+    auf und übergibt die Nachrichten sowie das allgemeine Chat‑Modell
+    (8B). Fehler werden vom Aufrufer behandelt.
+    """
+    return await call_llm(messages=messages, model=MODEL_GENERAL_8B)
 
 
 @router.post("", response_model=ChatSessionOut, status_code=status.HTTP_201_CREATED)

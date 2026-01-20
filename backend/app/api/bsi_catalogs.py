@@ -32,7 +32,7 @@ import re
 import uuid
 from typing import List, Tuple
 
-from fastapi import APIRouter, UploadFile, File, HTTPException, status
+from fastapi import APIRouter, UploadFile, File, HTTPException, status, BackgroundTasks
 
 from ..settings import BSI_CATALOG_DIR, MAX_UPLOAD_BYTES
 from ..db import SessionLocal
@@ -451,7 +451,10 @@ def _parse_modules(text: str) -> List[
     response_model=List[BsiCatalogUploadResponse],
     status_code=status.HTTP_201_CREATED,
 )
-async def upload_bsi_catalogs(file: List[UploadFile] = File(...)) -> List[BsiCatalogUploadResponse]:
+async def upload_bsi_catalogs(
+    background_tasks: BackgroundTasks,
+    file: List[UploadFile] = File(...),
+) -> List[BsiCatalogUploadResponse]:
     """Lädt einen oder mehrere BSI‑Kataloge als PDF hoch und verarbeitet sie.
 
     Für jede hochgeladene Datei wird ein neuer Katalog angelegt. Die PDF
@@ -508,18 +511,51 @@ async def upload_bsi_catalogs(file: List[UploadFile] = File(...)) -> List[BsiCat
                     storage_path=storage_path,
                     modules_data=modules_data,
                 )
-                responses.append(
-                    BsiCatalogUploadResponse(
-                        id=catalog.id,
-                        version=catalog.version,
-                        status=status_str,
-                        message=message,
-                    )
+                # Erstelle eine Upload‑Response für den Katalog
+                upload_resp = BsiCatalogUploadResponse(
+                    id=catalog.id,
+                    version=catalog.version,
+                    status=status_str,
+                    message=message,
                 )
+                # Starte automatische Normalisierung über einen Hintergrundjob,
+                # falls ein BackgroundTasks‑Objekt vorhanden ist. Dies sorgt dafür,
+                # dass die Kataloge sofort nach dem Upload normalisiert werden.
+                if background_tasks is not None:
+                    # Importiere Job‑Store und Normalizer hier, um zyklische
+                    # Importe zu vermeiden
+                    from ..api.jobs import jobs_store
+                    from ..schemas import JobStatus
+                    from ..normalizer import run_normalize_job
+                    from datetime import datetime
+                    import uuid as _uuid
+                    job_id = str(_uuid.uuid4())
+                    job_status = JobStatus(
+                        id=job_id,
+                        type="normalize",
+                        status="queued",
+                        progress=0.0,
+                        result_file=None,
+                        error=None,
+                        created_at=datetime.utcnow(),
+                        completed_at=None,
+                        result_data=None,
+                    )
+                    jobs_store[job_id] = job_status
+                    # Startet den Normalisierungsjob für den hochgeladenen Katalog
+                    background_tasks.add_task(run_normalize_job, job_id, catalog.id, None)
+                    # Gib die Job‑ID in der Upload‑Antwort zurück
+                    upload_resp.normalize_job_id = job_id
+                responses.append(upload_resp)
             except Exception as exc:
                 db.rollback()
                 responses.append(
-                    BsiCatalogUploadResponse(id="", version=0, status="error", message=str(exc))
+                    BsiCatalogUploadResponse(
+                        id="",
+                        version=0,
+                        status="error",
+                        message=str(exc),
+                    )
                 )
         db.commit()
     finally:

@@ -1,4 +1,7 @@
-version: "3.9"
+# Compose specification version is optional in newer docker-compose versions.
+# It will default to the latest version supported by Docker Compose. The
+# version key can be removed to avoid deprecation warnings.
+
 
 services:
   # PostgreSQL‑Datenbankservice
@@ -30,9 +33,9 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-fasiko_user}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fasiko_pass}
       OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
-      OLLAMA_CHAT_MODEL: ${OLLAMA_CHAT_MODEL:-llama3.1:8b}
-      MODEL_FASIKO_CREATE_70B: ${MODEL_FASIKO_CREATE_70B:-llama3.1:70b}
-      MODEL_GENERAL_8B: ${MODEL_GENERAL_8B:-llama3.1:8b}
+      OLLAMA_CHAT_MODEL: ${OLLAMA_CHAT_MODEL:-llama3:8b}
+      MODEL_FASIKO_CREATE_70B: ${MODEL_FASIKO_CREATE_70B:-llama3:70b}
+      MODEL_GENERAL_8B: ${MODEL_GENERAL_8B:-llama3:8b}
       SEARXNG_URL: ${SEARXNG_URL:-http://searxng:8080}
       WEBSEARCH_MAX_RESULTS: ${WEBSEARCH_MAX_RESULTS:-5}
       WEBSEARCH_TIMEOUT: ${WEBSEARCH_TIMEOUT:-15}
@@ -60,8 +63,14 @@ services:
 
   # Ollama‑LLM‑Service (liefert die Modelle)
   ollama:
-    image: ollama/ollama:latest
+    image: ollama/ollama:0.2.7
     container_name: fasiko-ollama
+    # Expose the Ollama API on all interfaces to ensure the backend can
+    # communicate with the LLM server. Without this the HTTP API may only
+    # bind to localhost inside the container.
+    environment:
+      OLLAMA_HOST: 0.0.0.0:11434
+      OLLAMA_API_KEY: ollama  # optional, wird nicht validiert
     ports:
       - "11434:11434"
     volumes:

@@ -401,15 +401,15 @@ offizielle BSI‑PDFs (z. B. das IT‑Grundschutz‑Kompendium) hochladen; aus
 jeder hochgeladenen Datei wird ein neuer Katalog mit eigener Version erzeugt.
 Die PDF wird im Verzeichnis BSI_CATALOG_DIR gespeichert und anschließend
 verarbeitet:
-	•	Textextraktion: Der Inhalt des PDFs wird mithilfe von PyPDF2
+•	Textextraktion: Der Inhalt des PDFs wird mithilfe von PyPDF2
 extrahiert und grob normalisiert (Silbentrennung wird entfernt). Ist
 kein PDF‑Parser vorhanden oder kann kein Text ausgelesen werden,
 wird der Upload als error markiert.
-	•	Modul‑Erkennung: Aus dem normalisierten Text werden alle
+•	Modul‑Erkennung: Aus dem normalisierten Text werden alle
 Bausteine erkannt, deren Zeilen mit einem Modulkürzel wie
 SYS.3.2.2 beginnen, gefolgt von einem Titel. Jede gefundene Zeile
 erzeugt einen neuen BsiModule‑Datensatz mit Code und Titel.
-	•	Anforderungen: Unterhalb eines Moduls werden Anforderungen erkannt,
+•	Anforderungen: Unterhalb eines Moduls werden Anforderungen erkannt,
 die entweder mit A und einer Nummer (z. B. A1, A 2) beginnen oder
 bereits das vollständige Modulpräfix enthalten (z. B. OPS.1.1.2.A2).
 Für jede erkannte Zeile wird aus Modulcode und Nummer sowie dem Titel
@@ -456,12 +456,12 @@ Weitere Optimierungen
 
 Bei der weiteren Nutzung des Katalog‑Uploads wurden zusätzliche
 Verbesserungen vorgenommen:
-	•	Deduplication von Modulen: Einige BSI‑PDFs enthalten denselben
+•	Deduplication von Modulen: Einige BSI‑PDFs enthalten denselben
 Baustein mehrfach, beispielsweise IND.2.3 Sensoren und Aktoren und
 IND.2.3 Sensoren und Aktoren R2 IT‑System. Der Parser führt solche
 Duplikate nun zu einem Modul zusammen, sodass jeder Modulcode nur
 einmal in der Datenbank vorkommt.
-	•	Längere Anforderungskennungen: Da req_id den vollständigen
+•	Längere Anforderungskennungen: Da req_id den vollständigen
 Modulcode inklusive Titel und Klassifizierung enthält, kann dieses
 Feld erheblich länger werden als die ursprünglichen 50 Zeichen.
 Zunächst wurde die Spaltenlänge schrittweise erhöht (Migration
@@ -478,32 +478,32 @@ In Block 19 wurde der BSI‑Katalog‑Mechanismus weiterentwickelt, um die
 aus den PDFs extrahierten Anforderungen präziser abzubilden und eine
 grundlegende Validierung zu ermöglichen. Die wichtigsten Erweiterungen
 im Überblick:
-	•	Zusätzliche Felder pro Anforderung: Neben der Kennung req_id
+•	Zusätzliche Felder pro Anforderung: Neben der Kennung req_id
 werden nun folgende Felder gespeichert:
-	•	title – der reine Titel der Maßnahme ohne BSI‑Code und ohne
+•	title – der reine Titel der Maßnahme ohne BSI‑Code und ohne
 Klassifizierung.
-	•	classification – Klassifizierung der Maßnahme (B = Basis,
+•	classification – Klassifizierung der Maßnahme (B = Basis,
 S = Standard, H = Hoch). Fehlende Klassifizierungen
 bleiben null.
-	•	is_obsolete – ein Flag, das auf true gesetzt wird, wenn der
+•	is_obsolete – ein Flag, das auf true gesetzt wird, wenn der
 Titel die Zeichenfolge „ENTFALLEN“ (Groß/Kleinschreibung
 ignoriert) enthält. Damit können entfallene Maßnahmen im UI
 gesondert markiert werden.
-	•	description – der normative Beschreibungs­text der Maßnahme.
-	•	Parser‑Verbesserungen: Der Parser sucht nun explizit nach der
+•	description – der normative Beschreibungs­text der Maßnahme.
+•	Parser‑Verbesserungen: Der Parser sucht nun explizit nach der
 ersten Klassifizierung in Klammern und trennt sie mitsamt Titel vom
 nachfolgenden normativen Text. Wird keine Klassifizierung gefunden,
 wird die gesamte Zeile als Titel übernommen und der normative Text
 bleibt zunächst leer; nachfolgende Zeilen werden an den
 Beschreibungstext angehängt. Damit werden Kennung, Titel,
 Klassifizierung und Beschreibung korrekt getrennt und gespeichert.
-	•	Deduplication und Konsistenz: Wie bereits in Block 18 werden
+•	Deduplication und Konsistenz: Wie bereits in Block 18 werden
 doppelte Module zusammengeführt. In Block 19 wird zusätzlich
 sichergestellt, dass Anforderungen eindeutig pro Modul identifiziert
 werden. Die neuen Felder erlauben später eine qualifizierte
 Validierung (z. B. Plausibilitätsprüfungen oder automatisierte
 Soll‑Ist‑Auswertungen).
-	•	Migrationen: Die neue Alembic‑Revision
+•	Migrationen: Die neue Alembic‑Revision
 0007_add_req_extras fügt die Spalten
 title, classification und is_obsolete zur Tabelle
 bsi_requirements hinzu. Die Spalte req_id bleibt vom Typ
@@ -526,21 +526,21 @@ installiert sein oder fehlschlagen, greift das System automatisch
 auf PyPDF2 als Fallback zurück.
 
 Die wichtigsten Anpassungen im Zuge dieser Überarbeitung:
-	•	Reaktivierung von pdfplumber: Das Paket pdfplumber wird
+•	Reaktivierung von pdfplumber: Das Paket pdfplumber wird
 erneut verwendet und in requirements.txt aufgenommen. _extract_pdf_text
 versucht zunächst, den Text mit pdfplumber zu extrahieren; nur wenn
 dies fehlschlägt, wird auf PyPDF2 zurückgegriffen.
-	•	Parameter für Wortabstände: Beim Aufruf von page.extract_text
+•	Parameter für Wortabstände: Beim Aufruf von page.extract_text
 werden x_tolerance=2 und line_overlap=0.5 gesetzt. Diese
 Parameter sorgen laut pdfplumber‑Dokumentation dafür, dass Wörter
 mit geringen Abständen zusammengeführt und Zeilenüberlappungen
 besser erkannt werden ￼.
-	•	Titelerkennung und Untermodul‑Logik: Die Module werden weiterhin
+•	Titelerkennung und Untermodul‑Logik: Die Module werden weiterhin
 anhand ihrer Codes erkannt; Bullet‑Zeichen und tiefere Codes (z. B.
 DER.2.1) werden als neue Module interpretiert. Titel werden am
 frühesten Auftreten eines Bullets, eines weiteren Modulcodes oder
 eines Klassifikationszusatzes (z. B. R3 Informationsverbund) geschnitten.
-	•	Bereinigungsheuristiken: Die Funktion _cleanup_description
+•	Bereinigungsheuristiken: Die Funktion _cleanup_description
 entfernt weiterhin Silbentrennungen, fügt Leerzeichen nach Satzzeichen
 ein und trennt zusammengeklebte Groß-/Kleinbuchstaben. Zusätzlich wird
 eine vorsichtige Präpositionsheuristik verwendet, um fehlende
@@ -550,3 +550,128 @@ Mit dieser Anpassung kombinieren wir die Vorteile von pdfplumber (Layout
 und Listen) mit fallback‑Sicherheit durch PyPDF2. Wenn weiterhin
 Worttrennungsprobleme auftreten, können manuelle Nachbearbeitungen oder
 zukünftige Parser‑Updates helfen, die Qualität weiter zu verbessern.
+
+LLM‑Text‑Normalisierung (Block 21)
+
+Die PDF‑Extraktion liefert trotz der verbesserten Parser oft weiterhin
+Texte mit Silbentrennungen, fehlenden Leerzeichen oder Zeilenumbrüchen.
+Um diese Artefakte zu beheben, wurde in Block 21 ein deterministischer
+LLM‑basierter Text‑Normalizer eingeführt. Die Normalisierung korrigiert
+ausschließlich Worttrennungen, Leerzeichen, Zeilenumbrüche und andere
+Formatierungsfehler, ohne irgendwelche inhaltlichen Änderungen
+vorzunehmen. Weder werden neue Sätze erzeugt noch bestehende Aussagen
+entfernt. Aufzählungszeichen (Bullets) bleiben als separate Zeilen
+erhalten.
+
+Die wichtigsten Aspekte der Normalisierung:
+	•	Rohdatenpersistenz – Jede Anforderung speichert nun zusätzlich
+die Felder raw_title und raw_description mit dem
+unveränderten Text aus der PDF‑Extraktion. Die bestehenden Felder
+title und description enthalten nach der Normalisierung die
+korrigierte Fassung. Alte Kataloge ohne diese Rohdaten bleiben
+weiterhin gültig; die Spalten können None sein.
+	•	8B‑Modell – Die Normalisierung verwendet ausschließlich das
+kleine LLM‑Modell (8‑B‑Variante) über die Ollama‑API. Das 70B‑Modell
+bleibt weiterhin nur für die initiale FaSiKo‑Generierung reserviert.
+Der Prompt weist das Modell strikt an, nur Formatierungsfehler zu
+korrigieren (Worttrennung, Grammatik, Leerzeichen) und keine
+neuen Inhalte hinzuzufügen. Fachbegriffe, Codes und Norm‑
+Begriffe (MUSS/SOLL/SOLLTE) werden unverändert gelassen.
+Hinweis zu Modellbezeichnungen – Ab Mitte 2025 hat Ollama
+die Modellbezeichnungen geändert. Die zuvor verwendeten Namen
+llama3.1:8b und llama3.1:70b existieren nicht mehr in der
+öffentlichen Bibliothek und führen zu 404 Not Found‑Fehlern. Die
+Anwendung verwendet daher standardmäßig die Varianten
+llama3:8b und llama3:70b. Diese Modelle sind
+identisch in der Funktion, lediglich die Versionskennzeichnung wurde
+angepasst. Für individuelle Umgebungen können die Modellnamen über
+die Umgebungsvariablen OLLAMA_CHAT_MODEL, MODEL_GENERAL_8B
+und MODEL_FASIKO_CREATE_70B angepasst werden.
+Hinweis zum API‑Endpoint – In neueren Ollama‑Versionen wurde der
+Endpunkt /api/chat entfernt und durch die OpenAI‑kompatiblen
+Routen (z. B. /v1/chat/completions) ersetzt. Einige Versionen
+bieten stattdessen /api/generate für einfache Prompt‑basierte
+Aufrufe. Um dennoch eine stabile Normalisierung zu gewährleisten,
+versucht das Backend zuerst den klassischen Chat‑Endpoint
+/api/chat. Schlägt dieser mit 404 Not Found fehl, wird
+/api/generate genutzt. Sollte auch dieser Endpunkt nicht
+verfügbar sein, fällt das System automatisch auf die
+OpenAI‑kompatible Route /v1/chat/completions zurück. Dieser
+mehrstufige Fallback benötigt keine Benutzerinteraktion und stellt
+sicher, dass die Normalisierung mit allen unterstützten
+Ollama‑Versionen funktioniert.
+	•	Asynchroner Job – Die Normalisierung erfolgt als
+Hintergrundjob (Typ normalize) über den bestehenden
+Job‑Service. Ein neuer Endpunkt
+POST /api/v1/bsi/catalogs/{catalog_id}/normalize
+startet den Job. Optional kann der module_code Parameter
+genutzt werden, um nur die Anforderungen eines einzelnen Moduls zu
+normalisieren. Der Fortschritt und der Status des Jobs können über
+GET /api/v1/jobs/{id} verfolgt werden.
+	•	Vorschau – Ein weiterer Endpunkt
+GET /api/v1/bsi/catalogs/{catalog_id}/normalize/preview bietet
+eine Vorschau der Normalisierung. Er gibt für die ersten limit
+Anforderungen (standardmäßig 3) eines Katalogs oder Moduls jeweils
+den Rohtext und die normalisierte Fassung zurück, ohne sie zu
+speichern. Damit können Nutzer das Ergebnis prüfen, bevor sie den
+Job starten.
+	•	Fehlerbehandlung – Schlägt der LLM‑Aufruf während der
+Normalisierung fehl, hängt das Verhalten vom Profil ab: In der
+Entwicklungsumgebung (ENV_PROFILE != 'prod') wird der
+unveränderte Rohtext übernommen und der Fehler im Job‑Status
+vermerkt. In der Produktion bricht der Job mit status=failed
+ab und liefert eine verständliche Fehlermeldung. Die bisherige
+Klassifizierung (B/S/H) und das is_obsolete‑Flag bleiben
+unberührt.
+
+Die Normalisierung verbessert die Lesbarkeit der extrahierten
+Anforderungen deutlich und bereitet sie für weitere
+Verarbeitungsschritte, wie die KI‑Analyse oder das Generieren von
+Dokumenten, vor. Die Implementierung umfasst neue Spalten in der
+Datenbank, einen Normalisierungs‑Service im Backend sowie
+entsprechende API‑Endpunkte und Dokumentation.
+
+Seit dem Block 21‑Fix wird die Normalisierung automatisch nach dem
+Hochladen eines Katalogs ausgelöst. Der Upload‑Endpunkt startet für
+jeden erfolgreich gespeicherten Katalog einen Normalisierungsjob im
+Hintergrund und liefert die Job‑ID im Feld normalize_job_id der
+Upload‑Antwort zurück. Dies ermöglicht es der Benutzeroberfläche, den
+Fortschritt ohne zusätzliche Interaktion zu überwachen. Der manuelle
+Normalisierungsendpunkt bleibt für erneute oder gezielte
+Normalisierungen weiterhin verfügbar.
+
+Gemeinsamer LLM‑Client und Endpunkt‑Fallback (Block 21‑Fix)
+
+In neueren Ollama‑Versionen wurden die bisher genutzten Chat‑ und
+Generate‑Endpoints verändert. Um sicherzustellen, dass alle
+LLM‑gestützten Funktionen – Chat, Dokumentenbearbeitung,
+Artefakt‑Generierung und die Normalisierung – weiterhin funktionieren,
+wurde ein zentraler LLM‑Client (backend/app/llm_client.py)
+eingeführt. Dieser Client kapselt die Kommunikation mit dem
+Ollama‑Server und versucht automatisch nacheinander die folgenden
+HTTP‑Routen:
+	1.	/api/chat – klassischer Chat‑Endpoint, geeignet für
+mehrteilige Unterhaltungen. Einige ältere Ollama‑Versionen
+unterstützen ausschließlich diesen Pfad.
+	2.	/api/generate – einfacher Generate‑Endpoint, der einen
+Prompt vervollständigt. Dieser Endpunkt wird verwendet, wenn
+/api/chat nicht vorhanden ist.
+	3.	/v1/chat/completions – OpenAI‑kompatibler Endpoint, der
+seit 2025 von Ollama bereitgestellt wird. Er ist Bestandteil
+einer neuen API‑Struktur und entspricht weitgehend dem
+OpenAI‑Chatformat.
+
+Der Client bereitet die Nutzdaten entsprechend der jeweiligen
+Schnittstelle auf und extrahiert die Antwort aus dem jeweiligen
+Antwortformat. Kann keiner der Endpoints erreicht werden oder liefert
+keiner eine Antwort, wird eine Exception ausgelöst. Alle Module, die
+das LLM nutzen – insbesondere chat.py, generator.py,
+ready.py und normalizer.py – verwenden nun den
+gemeinsamen Client. Dadurch werden separate Fehlerbehandlungen und
+harte Endpunktadressen im Code vermieden. Der Ready‑Endpoint
+prüft die Erreichbarkeit der Modelle nun ebenfalls über diesen Client.
+
+Dieser Umbau stellt sicher, dass Chat‑Funktionen, Websearch‑Chat,
+Bearbeitung, Normalisierung und Modell‑Checks weiterhin mit allen
+Ollama‑Versionen funktionieren, ohne dass der Nutzer Endpunkte
+manuell auswählen oder anpassen muss.

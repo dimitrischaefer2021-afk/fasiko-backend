@@ -26,14 +26,14 @@ Anwendungen und IT‑Systeme.
 from __future__ import annotations
 
 from typing import Dict, List, Tuple
-import httpx
+
 
 from .settings import (
-    OLLAMA_URL,
     MODEL_FASIKO_CREATE_70B,
     MODEL_GENERAL_8B,
     ENV_PROFILE,
 )
+from .llm_client import call_llm
 
 
 # Präzise Prompt‑Vorlagen für alle Artefakt‑Typen. Jeder Prompt
@@ -284,20 +284,13 @@ STATIC_TEMPLATES: Dict[str, str] = {
 
 
 async def _call_ollama_chat(messages: List[dict], model: str) -> str:
-    """Sendet die Nachrichten an Ollama und liefert den Antworttext.
+    """Sendet die Nachrichten an das LLM über den zentralen Client.
 
-    Dieses Hilfsmodul kapselt den HTTP‑Aufruf, so dass im Falle
-    unerwarteter Fehler ein klarer Exception‑Flow erzeugt wird.
+    Diese Hilfsfunktion kapselt den Aufruf an den LLM und gibt den
+    generierten Antworttext zurück. Fehler werden an den Aufrufer
+    weitergegeben.
     """
-
-    url = f"{OLLAMA_URL}/api/chat"
-    payload = {"model": model, "messages": messages, "stream": False}
-    async with httpx.AsyncClient() as client:
-        resp = await client.post(url, json=payload, timeout=600)
-        resp.raise_for_status()
-        data = resp.json()
-        message = data.get("message") or {}
-        return message.get("content") or ""
+    return await call_llm(messages=messages, model=model)
 
 
 def _build_prompt(artifact_type: str, project_name: str) -> str:

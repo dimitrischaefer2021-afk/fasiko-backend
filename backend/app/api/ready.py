@@ -12,18 +12,18 @@ from __future__ import annotations
 import asyncio
 from typing import List
 
-import httpx
+
 from sqlalchemy import text
 from fastapi import APIRouter
 
 from ..schemas import ReadyOut, ReadyComponent
 from ..settings import (
     ENV_PROFILE,
-    OLLAMA_URL,
     MODEL_GENERAL_8B,
     MODEL_FASIKO_CREATE_70B,
     SEARXNG_URL,
 )
+from ..llm_client import call_llm
 from ..db import engine
 
 router = APIRouter(tags=["ready"])
@@ -39,14 +39,12 @@ async def _check_database() -> ReadyComponent:
         return ReadyComponent(name=name, status="error", message=str(exc))
 
 async def _check_ollama_model(model_name: str) -> ReadyComponent:
-    """Prüft, ob ein bestimmtes Ollama‑Modell verfügbar ist."""
+    """Prüft, ob ein bestimmtes LLM‑Modell über den zentralen Client verfügbar ist."""
     comp_name = f"llm_{model_name}"
-    url = f"{OLLAMA_URL}/api/chat"
-    payload = {"model": model_name, "messages": [{"role": "user", "content": "ping"}], "stream": False}
+    messages = [{"role": "user", "content": "ping"}]
     try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(url, json=payload, timeout=10)
-            resp.raise_for_status()
+        # Versuche über den gemeinsamen Client eine Antwort zu erhalten.
+        await call_llm(messages=messages, model=model_name)
         return ReadyComponent(name=comp_name, status="ok")
     except Exception as exc:
         return ReadyComponent(name=comp_name, status="error", message=str(exc))

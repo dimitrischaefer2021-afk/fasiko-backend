@@ -160,6 +160,16 @@ class BsiCatalogUploadResponse(BaseModel):
     status: str
     message: str | None = None
 
+    # ID des automatisch gestarteten Normalisierungsjobs (falls aktiv).
+    normalize_job_id: str | None = Field(
+        default=None,
+        description=(
+            "Wenn bei Upload eines Katalogs die automatische Normalisierung aktiviert ist, "
+            "enthält dieses Feld die Job‑ID des Normalisierungsjobs."
+        ),
+        example="4f0e6a4e-c123-45d6-88af-1234567890ab",
+    )
+
 # -------- Artifacts (Dokumente) + Versionierung --------
 
 class ArtifactCreate(BaseModel):
@@ -679,6 +689,45 @@ class BsiAnalyzeResponse(BaseModel):
     items: List[BsiEvaluationDetailOut]
 
 
+# -------- Normalizer (Block 21) --------
+
+class BsiNormalizationPreviewItem(BaseModel):
+    """Vorschauelement für die Normalisierung einer BSI‑Anforderung.
+
+    Dieses Modell stellt das Rohmaterial (ungesäuberter Titel und
+    Beschreibung) einer Anforderung den vom Normalizer erzeugten
+    Texten gegenüber. Es wird für die Vorschaufunktion verwendet,
+    ohne die Datenbank zu verändern.
+    """
+
+    req_id: str = Field(..., description="Vollständige Kennung der Anforderung")
+    raw_title: str | None = Field(
+        default=None,
+        description="Unveränderter Titel aus der Extraktion. Kann None sein, wenn nicht gesetzt.",
+    )
+    normalized_title: str = Field(
+        ..., description="Titel nach der Normalisierung"
+    )
+    raw_description: str | None = Field(
+        default=None,
+        description="Unveränderte Beschreibung aus der Extraktion. Kann None sein, wenn nicht gesetzt.",
+    )
+    normalized_description: str = Field(
+        ..., description="Beschreibung nach der Normalisierung"
+    )
+
+
+class BsiNormalizationPreviewOut(BaseModel):
+    """Antwort für die Vorschau der Normalisierung.
+
+    Die Vorschau liefert eine Liste von Anforderungen mit ihren
+    ursprünglichen und normalisierten Texten, begrenzt über den
+    Parameter ``limit``.
+    """
+
+    items: List[BsiNormalizationPreviewItem]
+
+
 __all__ = [
     # Projekte
     "ProjectCreate",
@@ -747,6 +796,10 @@ __all__ = [
     "BsiModuleOut",
     "BsiRequirementOut",
     "BsiCatalogUploadResponse",
+
+    # Normalizer (Block 21)
+    "BsiNormalizationPreviewItem",
+    "BsiNormalizationPreviewOut",
 
     # Artefakt‑Bearbeitung (Block 14)
     "ArtifactEditRequest",

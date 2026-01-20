@@ -290,8 +290,8 @@ Editor‑Prompt.
 
 Block 16 – Apply/Reject & Änderungszusammenfassung
 •   Neue Endpunkte in backend/app/api/artifacts.py:
-	•	GET /api/v1/projects/{project_id}/artifacts/{artifact_id}/versions/{version}/summary berechnet die Anzahl hinzugefügter und entfernten Zeilen sowie eine Liste geänderter Abschnitte (basierend auf Markdown‑Überschriften). Die Vergleichsbasis ist die Vorgängerversion.
-	•	POST /apply und POST /reject unter demselben Pfad setzen eine Version explizit als aktuelle Version oder verwerfen sie. Verwerfen der aktuellen Version ist nicht erlaubt. Ein Löschen verworfener Versionen wird optional in späteren Blöcken ergänzt.
+•	GET /api/v1/projects/{project_id}/artifacts/{artifact_id}/versions/{version}/summary berechnet die Anzahl hinzugefügter und entfernten Zeilen sowie eine Liste geänderter Abschnitte (basierend auf Markdown‑Überschriften). Die Vergleichsbasis ist die Vorgängerversion.
+•	POST /apply und POST /reject unter demselben Pfad setzen eine Version explizit als aktuelle Version oder verwerfen sie. Verwerfen der aktuellen Version ist nicht erlaubt. Ein Löschen verworfener Versionen wird optional in späteren Blöcken ergänzt.
 •   Neues Schema ArtifactChangeSummaryOut in backend/app/schemas.py definiert die Struktur der Zusammenfassung (Version, added_count, removed_count, changed_sections).
 •   Anpassung TRUTH.md: Abschnitt „Apply/Reject und Änderungszusammenfassung (Block 16)“ erläutert die neuen Funktionen und den Lebenszyklus einer Version.
 
@@ -398,7 +398,7 @@ classification und is_obsolete ergänzt.
 „BSI‑Katalog‑Validierung und Anforderungsdetails (Block 19)“, der
 die neuen Felder, die Parser‑Verbesserungen und das Validierungsziel
 erläutert. Dieses Änderungsprotokoll wurde entsprechend erweitert.
-•   API‑Registrierung: In backend/app/api/__init__.py und
+•   API‑Registrierung: In backend/app/api/init.py und
 backend/app/main.py wird der neue Router unter /api/v1 eingebunden.
 •   Dokumentation: docs/TRUTH.md enthält nun den Abschnitt
 „BSI‑Kataloge (Block 18)“, der die Funktionsweise des Kataloguploads
@@ -444,3 +444,112 @@ entsprechend aktualisiert.
 •   Keine Datenbank‑Änderungen: Die Änderungen betreffen nur den
 Parser und die PDF‑Extraktion; an den Datenmodellen und
 Migrationen war keine Anpassung erforderlich.
+
+Block 21 – LLM‑Text‑Normalisierung
+•   Neue Felder und Migration: Das Modell BsiRequirement wurde um die
+Felder raw_title und raw_description erweitert, um die
+unveränderten Texte aus der PDF‑Extraktion zu speichern. Die Alembic
+Revision 0008_add_raw_fields_to_bsi_requirements legt diese
+Spalten an und kopiert die bestehenden Werte von title und
+description in die Rohdaten. Alte Datensätze bleiben kompatibel,
+da die Spalten nullable sind.
+•   Neues Modul backend/app/normalizer.py: Dieses Modul kapselt die
+LLM‑basierte Normalisierung. Es definiert Hilfsfunktionen zur
+Kommunikation mit dem kleinen Modell (8B) über Ollama und
+implementiert run_normalize_job, das alle Anforderungen eines
+Katalogs iteriert, Rohdaten setzt und die normalisierten Texte
+persistiert. Fehler führen in Development‑Umgebungen zu einem No‑Op
+und werden im Job‑Status vermerkt; in Produktion wird der Job
+abgebrochen.
+•   Neuer API‑Router backend/app/api/bsi_normalize.py: Der Router
+stellt zwei Endpunkte bereit: POST /api/v1/bsi/catalogs/{catalog_id}/normalize
+startet einen asynchronen Normalisierungs‑Job (optional nur für ein
+Modul) und GET /api/v1/bsi/catalogs/{catalog_id}/normalize/preview
+liefert eine Vorschau der normalisierten Texte für die ersten
+Anforderungen ohne Persistenz. Die Normalisierung läuft im
+Hintergrund; der Fortschritt kann über den bestehenden Job‑Endpunkt
+GET /api/v1/jobs/{job_id} verfolgt werden.
+•   Neue Schemas: In backend/app/schemas.py wurden die
+Pydantic‑Modelle BsiNormalizationPreviewItem und
+BsiNormalizationPreviewOut ergänzt. Sie beschreiben die
+Struktur der Vorschauausgabe und wurden dem __all__-Tuple
+hinzugefügt.
+•   Anpassungen an CRUD: crud.create_bsi_catalog setzt bei der
+Anlage von Anforderungen die Rohdatenfelder raw_title und
+raw_description gleich den extrahierten Werten, damit sie für
+die Normalisierung verfügbar sind.
+•   API‑Registrierung: Der neue Router wird in
+backend/app/api/__init__.py und backend/app/main.py unter
+dem Prefix /api/v1 eingebunden, sodass die Normalisierungs‑
+Endpunkte im Swagger verfügbar sind.
+•   Dokumentation: In docs/TRUTH.md wurde ein neuer Abschnitt
+„LLM‑Text‑Normalisierung (Block 21)“ ergänzt, der Zweck,
+Funktionsweise, Fehlerbehandlung und Endpunkte der Normalisierung
+detailliert beschreibt. Dieses Änderungsprotokoll dokumentiert die
+eingeführten Komponenten und die Migration.
+
+•   Block 21‑Fix – Automatische Normalisierung beim Upload: Der
+Upload‑Endpunkt für BSI‑Kataloge startet nun unmittelbar nach
+erfolgreichem Speichern eines Katalogs einen Normalisierungsjob im
+Hintergrund. Die Antwort des Uploads enthält die Job‑ID im Feld
+normalize_job_id, sodass die UI den Fortschritt verfolgen kann.
+Diese Änderung erfordert keine neuen Endpunkte, da der bestehende
+Normalisierungs‑Router weiterhin für erneute oder gezielte
+Normalisierungen verfügbar bleibt. TRUTH.md beschreibt das
+automatische Verhalten im Abschnitt „LLM‑Text‑Normalisierung“.
+
+•   Block 21‑Fix – Aktualisierte Modellbezeichnungen: Mit der
+Einführung der neuen Ollama‑Versionen wurden die Modellnamen
+llama3.1:8b und llama3.1:70b aus der öffentlichen Bibliothek
+entfernt. Die Anwendung verwendet nun als Standard die Modelle
+llama3:8b und llama3:70b. Diese Änderung verhindert
+404‑Fehler beim Aufruf der Ollama‑API. Die Standardeinträge in
+.env.example, docker-compose.yml und backend/app/settings.py
+wurden entsprechend angepasst. Nutzer können die Modellnamen
+weiterhin über die Umgebungsvariablen OLLAMA_CHAT_MODEL,
+MODEL_GENERAL_8B und MODEL_FASIKO_CREATE_70B überschreiben.
+
+•   Block 21‑Fix – Endpoint‑Fallback: Mit Veröffentlichung neuer
+Ollama‑Versionen wurde der bisher genutzte Endpunkt
+/api/chat aus der API entfernt, sodass Normalisierungsaufrufe
+mit 404 Not Found fehlschlugen. Die Implementierung wurde
+angepasst: Bei der Normalisierung wird nun zunächst der
+Chat‑Endpoint aufgerufen. Tritt dabei ein 404‑Fehler auf,
+versucht das Backend /api/generate. Ist auch dieser Endpunkt
+nicht vorhanden, wird automatisch auf die OpenAI‑kompatible
+Route /v1/chat/completions zurückgegriffen. Dieser
+mehrstufige Fallback stellt sicher, dass die Normalisierung
+unabhängig von der verwendeten Ollama‑Version funktioniert.
+•   Block 21‑Fix – Zentraler LLM‑Client und Chat‑Fix: Bei der
+Integration des LLM zeigte sich, dass in der eingesetzten
+Ollama‑Version nur noch der Chat‑Endpoint /api/chat
+erreichbar ist; die Endpunkte /api/generate und
+/v1/chat/completions lieferten 404‑Fehler. Deshalb wurde
+das Modul backend/app/llm_client.py angepasst. Der
+zentrale Client nutzt jetzt ausschließlich /api/chat und
+verzichtet auf weitere Fallback‑Routen. Alle direkten
+LLM‑Aufrufe in chat.py, generator.py, ready.py und
+normalizer.py wurden bereits in früheren Fixes durch
+diesen gemeinsamen Client ersetzt. Mit dieser Anpassung
+funktionieren Chat, Websearch‑Chat, Edit‑Funktionen,
+Artefakt‑Generierung, Normalisierung und Ready‑Checks auch
+dann zuverlässig, wenn nur ein einziger Endpoint verfügbar
+ist. Die Änderung betrifft nur die interne
+Kommunikationslogik; die öffentlichen API‑Endpunkte der
+Anwendung bleiben unverändert.
+    •   **Block 20‑Fix – Vereinfachter LLM‑Client:** Da der
+    Fallback‑Mechanismus in älteren Ollama‑Versionen nicht
+    funktionierte und häufig 404‑Fehler auf den Endpunkten
+    ``/api/generate`` und ``/v1/chat/completions`` erzeugte,
+    wurde der zentrale LLM‑Client dauerhaft auf einen einzigen
+    Endpoint reduziert: ``/api/chat``. Dies ist der einzige
+    Endpoint, der in unserer Umgebung zuverlässig antwortet.
+    Die Fallback‑Liste wird nicht mehr durchlaufen, sondern
+    ``call_llm`` sendet alle Anfragen direkt an ``/api/chat`` und
+    gibt bei Nichtverfügbarkeit eine Ausnahme zurück. Diese
+    Änderung ist Teil des Block 20‑Fixes, da sie die
+    Normalisierung sowie sämtliche Chat‑ und Generierungs‑
+    Funktionen stabilisiert. Sollte eine zukünftige Ollama‑
+    Version weitere Endpoints unterstützen, kann der Client
+    entsprechend erweitert werden.
+TRUTH.md wurde entsprechend erweitert.

@@ -331,6 +331,18 @@ class BsiRequirement(Base):
         Integer, nullable=False, default=0
     )  # 0 = False, 1 = True
 
+    # Rohdaten aus der PDF‑Extraktion. Diese Felder speichern den unveränderten
+    # Titel und die ursprüngliche Beschreibung, bevor eine Normalisierung
+    # durch den LLM‑Text‑Normalizer erfolgt. Sie werden beim Upload
+    # initial mit den extrahierten Werten befüllt. In früheren
+    # Blöcken (vor Block 21) waren diese Felder nicht vorhanden, daher
+    # können sie ``None`` sein. Nach der ersten Normalisierung bleiben
+    # die Rohdaten unverändert, während ``title`` und ``description``
+    # die korrigierte Fassung enthalten.
+    raw_title: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+
+    raw_description: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     # Ausführliche normative Beschreibung der Maßnahme (Markdown oder Plaintext).
     description: Mapped[str] = mapped_column(Text, nullable=False)
 

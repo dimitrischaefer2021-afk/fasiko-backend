@@ -677,6 +677,11 @@ def create_bsi_catalog(
         db.commit()
         db.refresh(module)
         for req_id, title, classification, is_obsolete, req_desc in reqs:
+            # Speichere neben den normalisierten Feldern auch die Rohdaten.
+            # raw_title und raw_description enthalten den unveränderten
+            # extrahierten Text und werden erst durch den Normalizer (Block 21)
+            # verarbeitet. Vorher sind raw_title und raw_description identisch
+            # mit title und req_desc.
             requirement = BsiRequirement(
                 module_id=module.id,
                 req_id=req_id,
@@ -684,6 +689,8 @@ def create_bsi_catalog(
                 classification=classification,
                 is_obsolete=1 if is_obsolete else 0,
                 description=req_desc,
+                raw_title=title,
+                raw_description=req_desc,
             )
             db.add(requirement)
         db.commit()

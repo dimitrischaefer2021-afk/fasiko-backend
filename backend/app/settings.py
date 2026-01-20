@@ -67,11 +67,16 @@ JOB_TIMEOUT: int = int(get_env("JOB_TIMEOUT", "1800"))
 # Basis‑URL des Ollama‑Servers
 OLLAMA_URL: str = get_env("OLLAMA_URL", "http://ollama:11434").rstrip("/")
 # Modell für Chats (8‑B)
-OLLAMA_CHAT_MODEL: str = get_env("OLLAMA_CHAT_MODEL", "llama3.1:8b")
+#
+# Hinweis: Ab 2025/2026 existieren die Modellbezeichnungen "llama3.1" bzw.
+# "llama3.2" nicht mehr in der ollama‑Bibliothek. Stattdessen werden die
+# Instruct‑Modelle ohne Unterversion veröffentlicht. Um 404‑Fehler zu
+# vermeiden, verwenden wir hier als Standard "llama3:8b" und "llama3:70b".
+OLLAMA_CHAT_MODEL: str = get_env("OLLAMA_CHAT_MODEL", "llama3:8b")
 # Modell für die initiale FaSiKo‑Erstellung (70‑B)
-MODEL_FASIKO_CREATE_70B: str = get_env("MODEL_FASIKO_CREATE_70B", "llama3.1:70b")
+MODEL_FASIKO_CREATE_70B: str = get_env("MODEL_FASIKO_CREATE_70B", "llama3:70b")
 # Modell für Bearbeitungen (8‑B)
-MODEL_GENERAL_8B: str = get_env("MODEL_GENERAL_8B", "llama3.1:8b")
+MODEL_GENERAL_8B: str = get_env("MODEL_GENERAL_8B", "llama3:8b")
 
 # ---------------------------------------------------------------------------
 # SearXNG‑Konfiguration
