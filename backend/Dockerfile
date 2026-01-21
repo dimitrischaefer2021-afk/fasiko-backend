@@ -20,7 +20,8 @@ COPY alembic /app/alembic
 
 # Kopiere das Startskript und mache es ausführbar
 COPY entrypoint.sh /app/entrypoint.sh
-RUN chmod +x /app/entrypoint.sh
+# CRLF -> LF + ausführbar
+RUN sed -i 's/\r$//' /app/entrypoint.sh && chmod +x /app/entrypoint.sh
 
 EXPOSE 8000
 

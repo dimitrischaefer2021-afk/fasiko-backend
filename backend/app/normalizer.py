@@ -1,222 +1,291 @@
 """
-LLM‑basierter Text‑Normalizer für BSI‑Anforderungen (Block 22).
+LLM-basierter Text-Normalizer für BSI-Anforderungen (Block 22).
 
-Dieser Normalizer verbessert die aus den PDF‑Katalogen extrahierten
-Titel und Beschreibungen der BSI‑Anforderungen. Die Normalisierung
-geschieht in zwei Schritten:
+Ziel:
+- Titel/Description aus PDF-Extraktion stabil "reparieren" (Worttrennung, Leerzeichen, Zeilenumbrüche)
+- KEINE inhaltliche Veränderung (keine neuen Beispiele, keine Produktvorschläge, keine Umschreibungen)
+- Transparente Vorschau inkl. Flags (DEV), Persistenz in PROD
 
-1. Zunächst wird das kleine LLM‑Modell (8B) mit einem strikten
-   Prompt aufgerufen, um nur Formatierungsfehler (Worttrennung,
-   Leerzeichen, Zeilenumbrüche) zu beheben. Es dürfen keine neuen
-   Inhalte erzeugt oder Aussagen verändert werden. Bei einem Fehler
-   oder leerer Antwort bleibt der Originaltext erhalten.
-2. Im Anschluss werden deterministische Heuristiken angewendet, die
-   typische Artefakte der PDF‑Extraktion beseitigen (z. B. getrennte
-   Silben, Bindestrich‑Umbrüche, mehrfache Leerzeichen). Diese
-   Heuristiken sind bewusst konservativ gewählt, um den Inhalt
-   unverändert zu lassen.
-
-Das Verhalten unterscheidet sich zwischen Entwicklungs‑ (DEV) und
-Produktionsumgebung (PROD):
-
-* In DEV (ENV_PROFILE != "prod") werden alle Anforderungen
-  verarbeitet, das Ergebnis jedoch **nicht** in die Datenbank
-  persistiert. Stattdessen wird eine Vorschau im Feld
-  ``job.result_data`` gespeichert. Für jede Anforderung wird der
-  Originaltext, das LLM‑Ergebnis, der heuristisch bereinigte Text sowie
-  eine Reihe von Flags zurückgegeben. Bleiben Artefakte nach der
-  Verarbeitung bestehen, wird eine Warnung im ``job.error`` vermerkt.
-
-* In PROD (ENV_PROFILE == "prod") werden die normalisierten Texte
-  persistiert. Rohdaten (``raw_title`` und ``raw_description``) werden
-  nur gesetzt, wenn sie noch nicht vorhanden sind. Bei Fehlern beim
-  LLM‑Aufruf wird der Job abgebrochen und als ``failed`` markiert.
-
-Die Funktionen dieses Moduls werden vom Normalisierungs‑Router und
-anderen Komponenten genutzt, um eine einheitliche Normalisierung
-sicherzustellen.
+Wichtig:
+- Um Halluzinationen zuverlässig abzufangen, wird die LLM-Antwort strikt validiert.
+  Wenn die Antwort das vorgegebene Format nicht einhält oder inhaltlich abweicht,
+  wird sie verworfen (DEV: sichtbar als llm_rejected; PROD: Job schlägt fehl).
 """
 
 from __future__ import annotations
 
-import asyncio
 import re
 from datetime import datetime
-from typing import Optional, Iterable, Dict, Any, List
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from sqlalchemy.orm import Session
 
-from .settings import MODEL_GENERAL_8B, ENV_PROFILE
-from .llm_client import call_llm
 from .db import SessionLocal
+from .jobs_store import jobs_store
 from .models import BsiModule, BsiRequirement
-from .api.jobs import jobs_store  # Zugriff auf den globalen Job‑Status
+from .settings import ENV_PROFILE, MODEL_GENERAL_8B
+from .llm_client import call_llm
+
+# -----------------------------
+# Heuristiken / Artefaktprüfung
+# -----------------------------
 
 
-async def _call_llm_normalizer(text: str) -> str:
-    """Ruft das LLM auf, um Formatierungsfehler im Text zu korrigieren.
+_PAGE_RE = re.compile(r"\bSeite\s+\d+\s+von\s+\d+\b", re.IGNORECASE)
+_HYPHEN_SPLIT_RE = re.compile(r"(?<=[A-Za-zÄÖÜäöüß])\-\s+(?=[A-Za-zÄÖÜäöüß])")
+_SOFT_HYPHEN_RE = re.compile("\u00ad")
+_SINGLE_LETTER_SPLIT_RE = re.compile(r"\b([A-Za-zÄÖÜäöüß])\s+([a-zäöüß]{4,})\b")
 
-    Es wird ausschließlich das kleine Modell (8B) verwendet. Der Prompt
-    weist das Modell an, nur Worttrennungen, Grammatik und
-    Formatierungen zu reparieren, ohne Inhalte zu verändern. Aufzählungen
-    sollen als eigene Zeilen mit ``• `` bestehen bleiben. Eine leere
-    Antwort bedeutet, dass das LLM keine Änderungen vornehmen wollte. In
-    diesem Fall wird der ursprüngliche Text zurückgegeben. Bei einem
-    Fehler wird ebenfalls der Originaltext geliefert.
-
-    Args:
-        text: Der zu normalisierende Text.
-
-    Returns:
-        Die vom LLM normalisierte Fassung oder der unveränderte Text im
-        Fehlerfall.
-    """
-    if not text:
-        return text
-    system_prompt = (
-        "Du bist ein Textkorrektor. Korrigiere nur Worttrennung, Grammatik "
-        "und Formatierung im folgenden Text. Ändere keinen Inhalt, füge "
-        "keine neuen Sätze hinzu und entferne keine bestehenden Aussagen. "
-        "Erhalte Aufzählungen als getrennte Zeilen mit '• '. Erhalte "
-        "Fachbegriffe, Codes und Norm‑Begriffe (MUSS/SOLL/SOLLTE) unverändert."
-    )
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": text},
-    ]
-    try:
-        result = await call_llm(messages=messages, model=MODEL_GENERAL_8B)
-        if isinstance(result, str):
-            # Leere Zeichenkette bedeutet: LLM hat keine Änderungen vorgenommen
-            return result or text
-        return text
-    except Exception:
-        # Bei Fehlern (z. B. kein Endpoint erreichbar) originalen Text verwenden
-        return text
+# Typische "LLM hat Inhalt erfunden"-Marker (DE/EN)
+_BAD_MARKERS = [
+    "here is",
+    "hier ist",
+    "please note",
+    "in this example",
+    "zum beispiel",
+    "beispielsweise",
+    "airwatch",
+    "app annie",
+    "similarweb",
+    "microsoft intune",
+    "android 4.3",
+    "ios 8",
+]
 
 
 def contains_artifacts(text: Optional[str]) -> bool:
-    """Erkennt typische Extraktionsartefakte in einem Text.
-
-    Es werden folgende Muster geprüft:
-    * Großbuchstabe gefolgt von Leerzeichen und mehreren Kleinbuchstaben
-      (z. B. "E influss")
-    * Bindestrich gefolgt von Leerzeichen innerhalb eines Wortes
-      (z. B. "Sicher- heit")
-    * Mehrfache Leerzeichen
-    * Zeilenumbrüche innerhalb eines Fließtextes
-
-    Args:
-        text: Eingabetext
-
-    Returns:
-        True, wenn eines der Artefakte gefunden wurde, sonst False.
-    """
+    """Erkennt typische PDF-Extraktionsartefakte."""
     if not text:
         return False
-    # Großbuchstabe + Leerzeichen + >=4 Kleinbuchstaben
-    if re.search(r"[A-ZÄÖÜ][a-zäöüß]*\s+[a-zäöüß]{4,}", text):
+
+    if _SOFT_HYPHEN_RE.search(text):
         return True
-    # Bindestrich + Leerzeichen mitten im Wort
-    if re.search(r"-\s+[A-Za-zÄÖÜäöüß]", text):
+    if _PAGE_RE.search(text):
         return True
-    # Mehrere Leerzeichen
-    if re.search(r"\s{2,}", text):
+    if _HYPHEN_SPLIT_RE.search(text):
         return True
-    # Zeilenumbrüche
+    if _SINGLE_LETTER_SPLIT_RE.search(text):
+        return True
+    if re.search(r"[ \t]{2,}", text):
+        return True
+
+    # Zeilenumbrüche im Fließtext (außer reine Bullet-Listen)
     if "\n" in text:
-        return True
+        lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+        non_bullet = [ln for ln in lines if not ln.lstrip().startswith("•")]
+        if len(non_bullet) >= 2:
+            return True
+
     return False
 
 
-def apply_heuristics(text: str) -> str:
-    """Wendet sichere Heuristiken zur Bereinigung von Extraktionsartefakten an.
+def apply_heuristics(text: str, *, keep_bullets: bool) -> str:
+    """Konservative, deterministische Heuristiken zur Artefaktentfernung.
 
-    Die folgenden Regeln werden angewandt (in der Reihenfolge):
-    1. Ersetze Zeilenumbrüche durch ein Leerzeichen.
-    2. Reduziere mehrfache Leerzeichen auf ein einzelnes.
-    3. Verbinde Großbuchstabe + Leerzeichen + >=4 Kleinbuchstaben zu einem Wort
-       (z. B. "E influss" → "Einfluss").
-    4. Entferne Bindestriche am Zeilenende zusammen mit nachfolgendem Leerraum
-       (z. B. "Sicher- heit" → "Sicherheit").
-    5. Sorge dafür, dass Aufzählungspunkte ("•") am Zeilenanfang stehen.
-
-    Args:
-        text: Eingabetext
-
-    Returns:
-        Bereinigter Text
+    - Entfernt Soft-Hyphens
+    - Entfernt "Seite X von Y"
+    - Fix: "Sicher- heit" -> "Sicherheit" (nur wenn nach '-' ein Leerzeichen folgt)
+    - Fix: "m indestens" / "E influss" -> "mindestens" / "Einfluss" (1 Buchstabe + Space + >=4)
+    - Normalisiert Whitespace
+    - Bullet-Format (nur keep_bullets=True): jede Aufzählung in eigener Zeile mit "• "
     """
     if not text:
         return text
+
     out = text
-    # 1. Zeilenumbrüche entfernen
-    out = out.replace("\n", " ")
-    # 2. Mehrfache Leerzeichen reduzieren
-    out = re.sub(r"\s{2,}", " ", out)
-    # 3. Großbuchstabe + Leerzeichen + >=4 Kleinbuchstaben verbinden
-    out = re.sub(r"([A-ZÄÖÜ])\s+([a-zäöüß]{4,})", r"\1\2", out)
-    # 4. Bindestrich + Leerzeichen innerhalb eines Wortes verbinden
-    out = re.sub(r"-\s+([A-Za-zÄÖÜäöüß])", r"\1", out)
-    # 5. Aufzählungspunkte auf eigene Zeile stellen
-    out = re.sub(r"\s*•\s*", "\n• ", out)
-    return out.strip()
+
+    # Einheitliche Line-Endings
+    out = out.replace("\r\n", "\n").replace("\r", "\n")
+
+    # Soft hyphen entfernen
+    out = _SOFT_HYPHEN_RE.sub("", out)
+
+    # Seitenmarker entfernen
+    out = _PAGE_RE.sub("", out)
+
+    # Bindestrich-Splits reparieren: "- " innerhalb eines Wortes entfernen
+    out = _HYPHEN_SPLIT_RE.sub("", out)
+
+    # Single-letter-Splits reparieren (nur sehr spezifisch)
+    out = _SINGLE_LETTER_SPLIT_RE.sub(r"\1\2", out)
+
+    if keep_bullets:
+        # Bullet-Token normieren (auch wenn Bullet im Fließtext hängt)
+        out = re.sub(r"[ \t]*\n?[ \t]*•[ \t]*", "\n• ", out)
+
+        # Bullet-Newlines konservieren, andere Newlines in Spaces umwandeln
+        out = out.replace("\n• ", "\n__BULLET__")
+        out = out.replace("\n", " ")
+        out = out.replace("__BULLET__", "\n• ")
+
+    else:
+        # Titel: keine Bullets, keine Newlines
+        out = out.replace("•", " ")
+        out = out.replace("\n", " ")
+
+    # Whitespace normalisieren
+    out = re.sub(r"[ \t]{2,}", " ", out)
+    out = re.sub(r"\s+\n", "\n", out)
+    out = re.sub(r"\n\s+", "\n", out)
+    out = out.strip()
+
+    return out
+
+
+# -----------------------------
+# LLM-Validierung / Normalizing
+# -----------------------------
+
+
+_SYSTEM_PROMPT = (
+    "Du bist ein Textkorrektor. Du darfst ausschließlich Worttrennung, "
+    "Leerzeichen, Silbentrennung und Formatierung korrigieren. "
+    "Du darfst KEINEN Inhalt verändern, KEINE Beispiele ergänzen, "
+    "KEINE Tools/Produkte nennen und KEINE neuen Sätze hinzufügen. "
+    "Erhalte Fachbegriffe, Codes und Norm-Begriffe (MUSS/SOLL/SOLLTE/DARF) unverändert.\n"
+    "\n"
+    "Gib DEINE Antwort strikt in genau diesem Format zurück (ohne zusätzliche Zeilen davor/danach):\n"
+    "<TITLE>\n"
+    "...\n"
+    "</TITLE>\n"
+    "<DESCRIPTION>\n"
+    "...\n"
+    "</DESCRIPTION>"
+)
+
+
+def _count_norm_keywords(s: str) -> Dict[str, int]:
+    keys = ["MUSS", "SOLLTE", "SOLL", "DARF", "DÜRFEN", "MÜSSEN", "SOLLEN"]
+    up = s.upper()
+    return {k: up.count(k) for k in keys}
+
+
+def _new_word_ratio(raw: str, out: str) -> float:
+    # alphabetische Wörter >=4 Zeichen; sehr grobe Heuristik gegen Erfindungen
+    raw_words = set(re.findall(r"[A-Za-zÄÖÜäöüß]{4,}", raw.lower()))
+    out_words = set(re.findall(r"[A-Za-zÄÖÜäöüß]{4,}", out.lower()))
+    if not out_words:
+        return 0.0
+    new_words = out_words - raw_words
+    return len(new_words) / max(len(out_words), 1)
+
+
+def _looks_like_wrong_answer(raw_title: str, raw_desc: str, cand_title: str, cand_desc: str) -> Tuple[bool, str]:
+    low = (cand_title + "\n" + cand_desc).lower()
+
+    for m in _BAD_MARKERS:
+        if m in low:
+            return True, f"bad_marker:{m}"
+
+    # Bullet-Erfindung: mehr Bullets als vorher
+    if (cand_title + cand_desc).count("•") > (raw_title + raw_desc).count("•") + 1:
+        return True, "bullets_increased"
+
+    # Norm-Schlüsselwörter dürfen nicht verschwinden/auftauchen
+    raw_counts = _count_norm_keywords(raw_desc)
+    out_counts = _count_norm_keywords(cand_desc)
+    if raw_counts != out_counts:
+        return True, "norm_keywords_changed"
+
+    # Neue Wörter zu viele -> vermutlich Halluzination
+    ratio = _new_word_ratio(raw_desc, cand_desc)
+    if len(raw_desc) >= 120 and ratio > 0.25:
+        return True, f"too_many_new_words:{ratio:.2f}"
+
+    # Unzulässige Meta-Antworten am Anfang
+    if low.strip().startswith(("here", "hier", "note:", "korrekturen")):
+        return True, "meta_prefix"
+
+    return False, ""
+
+
+def _parse_tagged_output(out: str) -> Optional[Tuple[str, str]]:
+    m = re.search(r"<TITLE>\s*(.*?)\s*</TITLE>\s*<DESCRIPTION>\s*(.*?)\s*</DESCRIPTION>\s*$", out, re.DOTALL)
+    if not m:
+        return None
+    title = m.group(1).strip()
+    desc = m.group(2).strip()
+    return title, desc
+
+
+async def _llm_normalize_pair(raw_title: str, raw_desc: str) -> Tuple[str, str, bool, bool, bool, Optional[str]]:
+    """LLM-Normalisierung (ein Call pro Requirement) mit strikter Validierung."""
+    if not raw_title and not raw_desc:
+        return raw_title, raw_desc, False, False, False, None
+
+    user_content = (
+        "Titel (Original):\n"
+        "<<<\n"
+        f"{raw_title}\n"
+        ">>>\n\n"
+        "Beschreibung (Original):\n"
+        "<<<\n"
+        f"{raw_desc}\n"
+        ">>>"
+    )
+    messages = [
+        {"role": "system", "content": _SYSTEM_PROMPT},
+        {"role": "user", "content": user_content},
+    ]
+
+    try:
+        out = await call_llm(messages=messages, model=MODEL_GENERAL_8B)
+    except Exception as exc:
+        # Endpoint / Timeout / etc.
+        return raw_title, raw_desc, False, False, False, f"llm_error:{exc}"
+
+    # LLM geantwortet
+    llm_used = True
+
+    # Leere Antwort = "keine Änderungen"
+    if out == "":
+        return raw_title, raw_desc, True, False, False, None
+
+    parsed = _parse_tagged_output(out)
+    if not parsed:
+        return raw_title, raw_desc, True, False, True, "unparseable_output"
+
+    cand_title, cand_desc = parsed
+
+    # Kandidaten dürfen nicht leer werden
+    cand_title = cand_title or raw_title
+    cand_desc = cand_desc or raw_desc
+
+    bad, reason = _looks_like_wrong_answer(raw_title, raw_desc, cand_title, cand_desc)
+    if bad:
+        return raw_title, raw_desc, True, False, True, reason
+
+    llm_changed = (cand_title.strip() != (raw_title or "").strip()) or (cand_desc.strip() != (raw_desc or "").strip())
+    return cand_title, cand_desc, llm_used, llm_changed, False, None
+
+
+# -----------------------------
+# Public API: Preview + Job
+# -----------------------------
 
 
 async def normalize_requirement_preview(req: BsiRequirement) -> Dict[str, Any]:
-    """Normalisiert eine einzelne Anforderung für die Vorschau.
+    """Normalisiert eine einzelne Anforderung für die Vorschau."""
+    raw_title = req.raw_title or req.title or ""
+    raw_desc = req.raw_description or req.description or ""
 
-    Es werden sowohl das LLM als auch die Heuristiken angewendet. Die
-    Funktion liefert ein Wörterbuch mit Originaltexten, LLM‑Antworten,
-    finalen (heuristisch bereinigten) Texten sowie Flags. Fehler beim
-    LLM‑Aufruf führen dazu, dass das LLM‑Ergebnis dem Rohtext entspricht
-    und ``llm_used`` auf False gesetzt wird.
-
-    Args:
-        req: Die zu normalisierende Anforderung.
-
-    Returns:
-        Ein Dictionary mit den Feldern ``id``, ``req_id``, ``raw_title``,
-        ``raw_description``, ``llm_title``, ``llm_description``,
-        ``final_title``, ``final_description`` sowie ``flags``.
-    """
-    raw_title = req.raw_title or req.title
-    raw_desc = req.raw_description or req.description
-    # Titel
-    llm_title = raw_title
-    llm_used_title = False
-    try:
-        tmp = await _call_llm_normalizer(raw_title)
-        llm_title = tmp
-        llm_used_title = True
-    except Exception:
-        llm_title = raw_title
-        llm_used_title = False
-    # Beschreibung
-    llm_desc = raw_desc
-    llm_used_desc = False
-    try:
-        tmp2 = await _call_llm_normalizer(raw_desc)
-        llm_desc = tmp2
-        llm_used_desc = True
-    except Exception:
-        llm_desc = raw_desc
-        llm_used_desc = False
-    # Determine if LLM changed
-    llm_changed = (llm_title.strip() != (raw_title or "").strip()) or (
-        llm_desc.strip() != (raw_desc or "").strip()
+    llm_title, llm_desc, llm_used, llm_changed, llm_rejected, reject_reason = await _llm_normalize_pair(
+        raw_title, raw_desc
     )
-    # Heuristiken anwenden
-    final_title = apply_heuristics(llm_title)
-    final_desc = apply_heuristics(llm_desc)
-    # Flags
+
+    final_title = apply_heuristics(llm_title, keep_bullets=False)
+    final_desc = apply_heuristics(llm_desc, keep_bullets=True)
+
     flags: Dict[str, Any] = {
-        "llm_used": llm_used_title or llm_used_desc,
+        "llm_used": llm_used,
         "llm_changed": llm_changed,
+        "llm_rejected": llm_rejected,
+        "llm_reject_reason": reject_reason,
         "heuristic_used": True,
         "artifact_before": contains_artifacts(raw_title) or contains_artifacts(raw_desc),
         "artifact_after": contains_artifacts(final_title) or contains_artifacts(final_desc),
     }
+
     return {
         "id": req.id,
         "req_id": req.req_id,
@@ -231,40 +300,23 @@ async def normalize_requirement_preview(req: BsiRequirement) -> Dict[str, Any]:
 
 
 async def run_normalize_job(job_id: str, catalog_id: str, module_code: Optional[str] = None) -> None:
-    """Ausführung eines Normalisierungsjobs im Hintergrund (Block 22).
-
-    In der Entwicklungsumgebung werden alle Anforderungen eines
-    Katalogs (optional eines Moduls) normalisiert, aber das Ergebnis
-    wird nicht persistiert. Stattdessen wird eine detaillierte Vorschau
-    inklusive Flags im Job gespeichert. In der Produktion werden die
-    normalisierten Texte in der Datenbank gespeichert. Fehler beim
-    LLM‑Aufruf führen in PROD zum Abbruch des Jobs.
-
-    Args:
-        job_id: Die ID des Jobs.
-        catalog_id: ID des BSI‑Katalogs.
-        module_code: Optionaler Modulkürzel, um nur ein Modul zu verarbeiten.
-    """
+    """Führt einen Normalisierungsjob aus (DEV: Preview, PROD: Persistenz)."""
     job = jobs_store.get(job_id)
     if not job:
         return
+
     job.status = "running"
     job.error = None
     job.progress = 0.0
 
     db: Session = SessionLocal()
     try:
-        # Module des Katalogs laden (optional filtern)
+        # Module des Katalogs laden
+        q = db.query(BsiModule).filter(BsiModule.catalog_id == catalog_id)
         if module_code:
-            modules: Iterable[BsiModule] = [
-                m
-                for m in db.query(BsiModule)
-                .filter(BsiModule.catalog_id == catalog_id)
-                .all()
-                if m.code == module_code
-            ]
-        else:
-            modules = db.query(BsiModule).filter(BsiModule.catalog_id == catalog_id).all()
+            q = q.filter(BsiModule.code == module_code)
+        modules: Iterable[BsiModule] = q.all()
+
         # Anforderungen sammeln
         requirements: List[BsiRequirement] = []
         for mod in modules:
@@ -275,41 +327,37 @@ async def run_normalize_job(job_id: str, catalog_id: str, module_code: Optional[
                 .all()
             )
             requirements.extend(reqs)
+
         total = len(requirements)
-        # Wenn keine Anforderungen vorhanden sind, beende den Job sofort. Dies
-        # verhindert, dass die Zusammenfassung eine künstliche ``total`` von 1
-        # anzeigt und ermöglicht eine klare Unterscheidung zwischen
-        # Katalogen ohne Anforderungen und der Normalisierung von leeren Daten.
         if total == 0:
-            if ENV_PROFILE != "prod":
-                job.result_data = {
-                    "requirements": [],
-                    "summary": {
-                        "total": 0,
-                        "llm_used_count": 0,
-                        "llm_changed_count": 0,
-                        "heuristic_used_count": 0,
-                        "artifact_remaining_count": 0,
-                    },
-                }
+            job.result_data = {
+                "requirements": [],
+                "summary": {
+                    "total": 0,
+                    "llm_used_count": 0,
+                    "llm_changed_count": 0,
+                    "heuristic_used_count": 0,
+                    "artifact_remaining_count": 0,
+                },
+            }
             job.status = "completed"
             job.progress = 1.0
             job.completed_at = datetime.utcnow()
-            # Kein Fehler, sondern einfach 0 Anforderungen
             return
-        # Wenn Anforderungen vorhanden sind, setze total auf ihre Anzahl
-        # ``total`` wird für die Progress‑Berechnung verwendet
-        # Entwicklungsmodus: Vorschaudaten sammeln, keine Persistenz
+
+        # DEV: keine Persistenz, aber volle Preview
         if ENV_PROFILE != "prod":
             result_reqs: List[Dict[str, Any]] = []
             llm_used_count = 0
             llm_changed_count = 0
             heuristic_used_count = 0
             artifact_remaining_count = 0
+
             for idx, req in enumerate(requirements):
                 preview = await normalize_requirement_preview(req)
                 result_reqs.append(preview)
-                flags = preview["flags"]
+
+                flags = preview.get("flags", {})
                 if flags.get("llm_used"):
                     llm_used_count += 1
                 if flags.get("llm_changed"):
@@ -318,18 +366,18 @@ async def run_normalize_job(job_id: str, catalog_id: str, module_code: Optional[
                     heuristic_used_count += 1
                 if flags.get("artifact_after"):
                     artifact_remaining_count += 1
+
                 job.progress = (idx + 1) / total
-            # Zusammenfassung
-            summary = {
-                "total": total,
-                "llm_used_count": llm_used_count,
-                "llm_changed_count": llm_changed_count,
-                "heuristic_used_count": heuristic_used_count,
-                "artifact_remaining_count": artifact_remaining_count,
-            }
+
             job.result_data = {
                 "requirements": result_reqs,
-                "summary": summary,
+                "summary": {
+                    "total": total,
+                    "llm_used_count": llm_used_count,
+                    "llm_changed_count": llm_changed_count,
+                    "heuristic_used_count": heuristic_used_count,
+                    "artifact_remaining_count": artifact_remaining_count,
+                },
             }
             job.status = "completed"
             job.progress = 1.0
@@ -340,35 +388,48 @@ async def run_normalize_job(job_id: str, catalog_id: str, module_code: Optional[
                     f"Artefakte verbleiben."
                 )
             return
-        # Produktionsmodus: Texte persistieren
+
+        # PROD: Persistenz (strikter)
         for idx, req in enumerate(requirements):
-            try:
-                preview = await normalize_requirement_preview(req)
-            except Exception as exc:
-                # Fehler beim LLM im Produktionsmodus -> Job abbrechen
+            preview = await normalize_requirement_preview(req)
+            flags = preview.get("flags", {})
+
+            # In PROD: wenn LLM nicht erreichbar oder Antwort verworfen -> FAIL (sonst riskant)
+            if not flags.get("llm_used"):
                 job.status = "failed"
-                job.error = f"Normalisierung abgebrochen: {exc}"
-                job.progress = (idx / total)
+                job.error = "LLM nicht erreichbar (llm_used=false)."
+                job.progress = idx / total
                 job.completed_at = datetime.utcnow()
                 db.commit()
                 return
-            # Rohdaten nur setzen, falls noch nicht vorhanden
+            if flags.get("llm_rejected"):
+                job.status = "failed"
+                job.error = f"LLM-Antwort ungültig: {flags.get('llm_reject_reason')}"
+                job.progress = idx / total
+                job.completed_at = datetime.utcnow()
+                db.commit()
+                return
+
+            # Rohdaten nur einmalig setzen
             if req.raw_title is None:
                 req.raw_title = req.title
             if req.raw_description is None:
                 req.raw_description = req.description
-            # Persistiere finalen Text
+
             req.title = preview["final_title"]
             req.description = preview["final_description"]
             db.add(req)
-            # Periodischer Commit zur Vermeidung langer Transaktionen
+
             if (idx + 1) % 20 == 0:
                 db.commit()
+
             job.progress = (idx + 1) / total
+
         db.commit()
         job.status = "completed"
         job.progress = 1.0
         job.completed_at = datetime.utcnow()
+
     except Exception as exc:
         job.status = "failed"
         job.error = str(exc)

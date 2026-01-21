@@ -1,10 +1,5 @@
-# Compose specification version is optional in newer docker-compose versions.
-# It will default to the latest version supported by Docker Compose. The
-# version key can be removed to avoid deprecation warnings.
-
-
 services:
-  # PostgreSQL‑Datenbankservice
+  # PostgreSQL-Datenbankservice
   db:
     image: postgres:16-alpine
     container_name: fasiko-db
@@ -16,17 +11,14 @@ services:
       - pg_data:/var/lib/postgresql/data
     restart: unless-stopped
 
-  # Backend‑Anwendung (FastAPI)
+  # Backend-Anwendung (FastAPI)
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
     container_name: fasiko-backend
-    # Lade die Umgebungsvariablen aus der .env-Datei; zusätzlich werden
-    # explizit erforderliche Variablen gesetzt. Die meisten Werte sind
-    # optional, da ``settings.py`` Defaultwerte definiert.
     environment:
-      APP_NAME: ${APP_NAME:-FaSiKo‑Studio Backend}
+      APP_NAME: ${APP_NAME:-FaSiKo-Studio Backend}
       ENV_PROFILE: ${ENV_PROFILE:-prod}
       DATABASE_URL: ${DATABASE_URL:-}
       POSTGRES_DB: ${POSTGRES_DB:-fasiko_db}
@@ -61,23 +53,23 @@ services:
       - "8000:8000"
     restart: unless-stopped
 
-  # Ollama‑LLM‑Service (liefert die Modelle)
+  # Ollama-LLM-Service (GPU aktiviert)
   ollama:
     image: ollama/ollama:0.2.7
     container_name: fasiko-ollama
-    # Expose the Ollama API on all interfaces to ensure the backend can
-    # communicate with the LLM server. Without this the HTTP API may only
-    # bind to localhost inside the container.
     environment:
       OLLAMA_HOST: 0.0.0.0:11434
-      OLLAMA_API_KEY: ollama  # optional, wird nicht validiert
+      OLLAMA_API_KEY: ollama
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
     ports:
       - "11434:11434"
     volumes:
       - ollama_data:/root/.ollama
+    gpus: all
     restart: unless-stopped
 
-  # SearXNG‑Metasuchmaschine für Webrecherche
+  # SearXNG-Metasuchmaschine für Webrecherche
   searxng:
     image: searxng/searxng:latest
     container_name: fasiko-searxng

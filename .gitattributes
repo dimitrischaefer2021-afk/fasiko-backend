@@ -1,0 +1,9 @@
+# Immer LF in Containern / Unix-Skripten
+*.sh text eol=lf
+*.bash text eol=lf
+
+# Optional: YAML/Dockerfiles ebenfalls stabil halten
+Dockerfile text eol=lf
+docker-compose.yml text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
