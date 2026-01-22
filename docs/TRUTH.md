@@ -737,3 +737,34 @@ sehen, ob das LLM tatsächlich wirkt und welche Artefakte entfernt
 wurden, ohne dass bereits Daten überschrieben werden. In der
 Produktion bleiben die stabilen Persistenz‑ und Fehlerregeln
 erhalten.
+
+## Parser‑Fixes und Jobs‑Store (Block 23)
+
+In Block 23 wurden mehrere Fehler behoben, die beim Upload und der Verarbeitung von BSI‑Katalogen sowie bei der Registrierung von Jobs auftraten.
+
+### Anforderungen ohne Punkt erkennen
+
+Der Parser in `backend/app/api/bsi_catalogs.py` erkannte bisher nur Anforderungen, wenn nach dem Buchstaben „A“ ein Punkt stand (z. B. `A.1`). Im offiziellen BSI‑Katalog `SYS.3.2.2` werden Kennungen jedoch ohne Punkt geschrieben (z. B. `A1`). Der Regex zur Erkennung wurde so angepasst, dass der Punkt optional ist. Damit werden nun sowohl `A.1` als auch `A1` korrekt erkannt und als BsiRequirement gespeichert.
+
+### Modul‑Erkennung einschränken
+
+Das Parsen des PDF‑Textes führte gelegentlich dazu, dass Referenzen auf andere Module (etwa „ORP.4“) als neue Module interpretiert wurden. Die Logik speichert nun das Präfix des ersten gefundenen Bausteins (z. B. `SYS`) und erstellt nur dann einen neuen BsiModule‑Datensatz, wenn das Präfix übereinstimmt. Fremde Modulreferenzen werden ignoriert.
+
+### Erweiterte Heuristiken
+
+Die Funktion `_cleanup_description` entfernt Extraktionsartefakte und fügt fehlende Leerzeichen ein. Um ungewöhnliche Silbentrennungs‑Artefakte zu beheben, wurden folgende Korrekturen ergänzt:
+
+- `"verar beitet" → "verarbeitet"`
+- `"m indestens" → "mindestens"`
+- `"Anfor derungen" → "Anforderungen"`
+- `"indie" → "in die"`
+
+Diese Erweiterungen verbessern die Lesbarkeit der extrahierten Texte und reduzieren die Anzahl der verbleibenden Artefakte.
+
+### JobsStore‑Fix
+
+Der Job‑Service verwendet einen `JobsStore`, der über die Methoden `create()`, `get()` und `set()` verfügt. An einigen Stellen im Code (insbesondere beim Starten von Normalisierungsjobs) wurde fälschlicherweise eine Dictionary‑Zuweisung verwendet (`jobs_store[job_id] = job_status`). Da `JobsStore` kein dict ist, führte dies zu einem Fehler. Alle Stellen wurden angepasst, sodass neue Jobs nun mit `jobs_store.set(job_status)` registriert werden.
+
+### Auswirkungen
+
+Dank dieser Änderungen werden beim Upload von BSI‑Katalogen sowohl die Module als auch deren Anforderungen zuverlässig erkannt, auch wenn die Kennungen variieren oder sich Silbentrennungsfehler im Text befinden. Jobs zur Normalisierung und Generierung werden nun ohne Fehler registriert und können über die API verfolgt werden.

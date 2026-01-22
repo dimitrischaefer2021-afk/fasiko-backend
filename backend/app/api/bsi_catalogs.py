@@ -186,9 +186,22 @@ def _cleanup_description(text: str) -> str:
     # und "obsie" -> "ob sie". Weitere Fehlerbilder können hier ergänzt
     # werden, falls sie im Laufe der Nutzung auffallen.
     corrections = {
+        # Grundlegende Korrekturen für verschmolzene oder fehlende Leerzeichen
         "obdie": "ob die",
         "obsie": "ob sie",
         "verb indlich": "verbindlich",
+        # Erweiterte Heuristiken für bekannte Worttrennungsartefakte
+        "verar beitet": "verarbeitet",
+        "m indestens": "mindestens",
+        "Anfor derungen": "Anforderungen",
+        "indie": "in die",
+        # Zusätzliche Korrekturen, die in den Normalisierungsjobs aufgefallen sind
+        # "sokonfiguriert" tritt auf, wenn "so konfiguriert" ohne Leerzeichen extrahiert wird
+        "sokonfiguriert": "so konfiguriert",
+        # "Minimalpr inzip" entsteht durch Zeilenumbrüche innerhalb des Wortes
+        "Minimalpr inzip": "Minimalprinzip",
+        # "MDMStrategie" sollte zum korrekten Begriff "MDM-Strategie" werden
+        "MDMStrategie": "MDM-Strategie",
     }
     for bad, good in corrections.items():
         text = text.replace(bad, good)
@@ -229,19 +242,6 @@ def _normalize_text(text: str) -> str:
 # einer Zahl beginnt. Dadurch werden Fälle wie "SYS.3.2.2.A" in einer Zeile
 # und "1 Festlegung ..." in der nächsten Zeile korrekt zu "SYS.3.2.2.A1
 # Festlegung ..." zusammengefügt.
-
-# -----------------------------------------------------------------------------
-# Helferfunktionen für die Parserlogik
-#
-# Insbesondere bei der PDF‑Extraktion von BSI‑Katalogen können Requirement‑Codes
-# (z. B. "SYS.3.2.2.A1") über Zeilenumbrüche hinweg getrennt werden. Das führt
-# dazu, dass die eigentliche Kennung "A1" in der nächsten Zeile steht und
-# unser Parser sie nicht erkennt. Die Funktion ``_join_broken_requirement_ids``
-# durchsucht eine Liste von Zeilen nach solchen Fragmenten und fügt sie
-# zusammen, sofern das nachfolgende Fragment mit einer Zahl beginnt. Dadurch
-# wird aus "SYS.3.2.2.A" und "1 Festlegung ..." wieder ein einziger String
-# "SYS.3.2.2.A1 Festlegung ...". Dies verbessert die Erkennungsrate von
-# Anforderungen in PDFs, bei denen die Formatierung uneinheitlich ist.
 
 from typing import List
 
@@ -311,6 +311,19 @@ def _parse_modules(text: str) -> List[
     current_code: str | None = None
     current_title: str | None = None
     current_reqs: List[Tuple[str, str, str | None, bool, str]] = []
+    # Speichere das Präfix (z. B. 'SYS') des ersten Moduls, um spätere
+    # Module mit anderem Präfix zu ignorieren. Dadurch werden Modulreferenzen
+    # in Beschreibungstexten (z. B. ORP.4) nicht als neue Module angelegt.
+    first_prefix: str | None = None
+    # Flag, um anzuzeigen, dass der Titel des aktuellen Moduls über mehrere
+    # Zeilen hinweg fortgesetzt wird. Wenn building_title True ist, werden
+    # nachfolgende Zeilen, die weder neue Module noch Requirements sind, an
+    # den aktuellen Titel angehängt. Dies behebt den Fall, dass der
+    # Modulname in der PDF über zwei Zeilen verteilt ist (z. B.
+    # "Mobile Device" gefolgt von "Management"). Sobald ein Requirement
+    # oder ein neues Modul erkannt wird, wird building_title wieder auf
+    # False gesetzt.
+    building_title: bool = False
     # Zeilen aus dem normalisierten Text aufspalten
     raw_lines = text.split("\n")
     # Füge gegebenenfalls gebrochene Requirement‑IDs zusammen, um Fragmente zu
@@ -354,6 +367,14 @@ def _parse_modules(text: str) -> List[
                     # Vergleiche die Anzahl der Segmente: z. B. DER.2 -> 2, DER.2.1 -> 3
                     if len(candidate_code.split(".")) > len(current_code.split(".")):
                         m = m_sub
+        # Wenn ein potenzielles Modul erkannt wurde, prüfe das Präfix
+        if m:
+            module_prefix_candidate = m.group(1).split(".")[0]
+            if first_prefix is None:
+                first_prefix = module_prefix_candidate
+            elif module_prefix_candidate != first_prefix:
+                # Prefix unterscheidet sich – nicht als Modul interpretieren
+                m = None
         if m:
             # Vorheriges Modul abschließen
             if current_code:
@@ -393,7 +414,68 @@ def _parse_modules(text: str) -> List[
                 raw_title = raw_title[:cut_idx].rstrip()
             current_title = raw_title
             current_reqs = []
+            # Ab diesem Punkt wird der Titel fortgesetzt, bis ein Requirement
+            # oder ein neues Modul erkannt wird.
+            building_title = True
             continue
+
+        # Wenn wir uns innerhalb eines Moduls befinden und der Titel aus mehreren
+        # Zeilen besteht (building_title=True), aber kein neues Modul erkannt
+        # wurde, pruefen wir, ob die aktuelle Zeile den Beginn eines
+        # Requirements darstellt. Wenn nicht, wird die Zeile als Fortsetzung
+        # des Modultitels interpretiert. Dies behebt Fälle, in denen der
+        # Modulname in der PDF in der nächsten Zeile fortgesetzt wird.
+        if current_code and building_title:
+            # Pruefe, ob die Zeile wie ein Requirement beginnt (A1, A 1, SYS.3.2.2.A1 ...).
+            # Wenn ja, beende die Titel-Fortsetzung und lass die Anforderungserkennung
+            # in den folgenden Zeilen den Eintrag verarbeiten.
+            rm_head = re.match(
+                r"(?:([A-Z]{2,4}\.[0-9]+(?:\.[0-9]+)*)\.?)?[Aa]\s*\.?\s*(\d+)[\.:\-\s].*",
+                stripped,
+            )
+            # Pruefe auch, ob die Zeile wie ein neues Modul aussieht (z.B. "APP.1.2"),
+            # um zu verhindern, dass solche Zeilen an den Titel angehaengt werden.
+            m_candidate = re.match(r"[A-Z]{2,4}\.[0-9]+(?:\.[0-9]+)*\s+.+", stripped)
+            # Pruefe, ob die Zeile einen Abschnitts- oder Kapitelheader (z.B. "1.", "1.1.") darstellt.
+            # Solche Header werden im PDF zur Strukturierung verwendet und sollten nicht an den Titel
+            # angehaengt werden. Wir erkennen diese durch eine führende Zahl mit optionalen Punkten.
+            section_header = re.match(r"^\d+(?:\.\d+)*[\.:\)]?\s*", stripped)
+            if rm_head or m_candidate or section_header:
+                # Titel ist abgeschlossen; das folgende Parsing wird die Zeile
+                # entsprechend als Requirement, neues Modul oder Abschnitt verarbeiten.
+                building_title = False
+            else:
+                # Die Zeile ist eine Fortsetzung des Titels. Entferne evtl.
+                # Bullet-Symbole, weitere Modulcodes oder Klassifikationsangaben
+                # analog zur ersten Zeile des Titels.
+                cont = stripped
+                import re as _re_cut2
+                cut_idx2: int | None = None
+                # Suche Bullet-Symbole im Fortsetzungstext
+                for sym in ["\u2022", "•", "·"]:
+                    idx2 = cont.find(sym)
+                    if idx2 != -1 and (cut_idx2 is None or idx2 < cut_idx2):
+                        cut_idx2 = idx2
+                # Suche weitere Modulcodes (z.B. "APP.1.2") im Fortsetzungstext
+                mc_match2 = _re_cut2.search(r"([A-Z]{2,4}\.[0-9]+(?:\.[0-9]+)+)", cont)
+                if mc_match2:
+                    idx2 = mc_match2.start()
+                    if cut_idx2 is None or idx2 < cut_idx2:
+                        cut_idx2 = idx2
+                # Suche Klassifikationszusätze (" R2", " R3" usw.) im Fortsetzungstext
+                class_match2 = _re_cut2.search(r"\sR\d+\b", cont)
+                if class_match2:
+                    idx2 = class_match2.start()
+                    if cut_idx2 is None or idx2 < cut_idx2:
+                        cut_idx2 = idx2
+                if cut_idx2 is not None:
+                    cont = cont[:cut_idx2].rstrip()
+                # Haenge den Fortsetzungstext an den aktuellen Titel an,
+                # falls er nach der Bereinigung nicht leer ist.
+                if cont:
+                    current_title = f"{current_title} {cont}"
+                # Zeile wurde für die Titelbildung verwendet – nicht weiter verarbeiten.
+                continue
         # Anforderungen parsen. Ein Requirement kann als "A1", "A 1" oder
         # inklusive Modulpräfix wie "SYS.3.2.2.A1" erscheinen. Wir erlauben
         # optional ein vorangestelltes Modul (Buchstaben + Zahlen mit Punkten)
@@ -402,7 +484,7 @@ def _parse_modules(text: str) -> List[
         # Beschreibungstext.
         if current_code:
             rm = re.match(
-                r"(?:([A-Z]{2,4}\.[0-9]+(?:\.[0-9]+)*)\.)?[Aa]\s*\.?\s*(\d+)[\.:\-\s]*(.*)",
+                r"(?:([A-Z]{2,4}\.[0-9]+(?:\.[0-9]+)*)\.?)?[Aa]\s*\.?\s*(\d+)[\.:\-\s]*(.*)",
                 stripped,
             )
             if rm:
@@ -413,7 +495,7 @@ def _parse_modules(text: str) -> List[
 
                 # Suche nach der ersten Klassifizierung (B|S|H) in Klammern. Wenn
                 # vorhanden, trennen wir den Titel bis zur Klammer. Wenn keine
-                # Klassifizierung gefunden wird, bleibt die Klassifizierung None.
+                # Klassifizierung gefunden wird, bleibt die Klassifikation None.
                 class_match = re.search(r"\(([BSH])\)", remainder)
                 if class_match:
                     class_idx_start = class_match.start()
@@ -609,7 +691,9 @@ async def upload_bsi_catalogs(
                         completed_at=None,
                         result_data=None,
                     )
-                    jobs_store[job_id] = job_status
+                    # Registriere den Job im jobs_store. Verwende set(), da JobsStore
+                    # keine Indexzuweisung unterstützt.
+                    jobs_store.set(job_status)
                     # Startet den Normalisierungsjob für den hochgeladenen Katalog
                     background_tasks.add_task(run_normalize_job, job_id, catalog.id, None)
                     # Gib die Job‑ID in der Upload‑Antwort zurück

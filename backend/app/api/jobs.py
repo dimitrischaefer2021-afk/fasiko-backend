@@ -1,18 +1,19 @@
 """
 API-Router für Jobs.
 
-Dieser Router implementiert einen einfachen Job-Service, mit dem langlaufende Aufgaben
-gestartet und überwacht werden können. Der Job-Status wird aktuell im Speicher gehalten
-(jobs_store) und ist damit für DEV/Tests geeignet.
+Dieser Router implementiert einen einfachen Job-Service, mit dem langlaufende
+Aufgaben gestartet und überwacht werden können. Der Job-Status wird aktuell im
+Speicher gehalten (jobs_store) und ist damit für DEV/Tests geeignet.
 
 Unterstützte Job-Typen:
-- export: Exportiert Artefakte als ZIP (txt/md/docx/pdf).
-- generate: Generiert Artefakte via LLM (Job).
-- edit: Erstellt eine neue Version eines Artefakts via LLM inkl. Diff (Job).
+ - export: Exportiert Artefakte als ZIP (txt/md/docx/pdf).
+ - generate: Generiert Artefakte via LLM (Job).
+ - edit: Erstellt eine neue Version eines Artefakts via LLM inkl. Diff (Job).
+ - normalize: (Block 21) Normalisiert BSI-Anforderungstexte via LLM/Heuristik.
 
 Endpunkte (unter /api/v1/... durch Haupt-Router):
-- POST /jobs
-- GET  /jobs/{job_id}
+ - POST /jobs
+ - GET  /jobs/{job_id}
 """
 
 from __future__ import annotations
@@ -47,12 +48,14 @@ async def _run_export_job(job_id: str, artifact_ids: List[str], file_format: str
     if not job:
         return
 
+    # set initial job status
     job.status = "running"
     job.error = None
     job.progress = 0.0
 
     db = SessionLocal()
     try:
+        # Run export and update job when done
         _, zip_path = export_artifacts_to_zip(
             db=db,
             artifact_ids=artifact_ids or [],
@@ -99,6 +102,7 @@ async def _run_generate_job(job_id: str, project_id: str, types: List[str]) -> N
         result_items: List[dict] = []
         total = max(len(types), 1)
 
+        # Map input types to user-friendly titles
         title_map = {
             "strukturanalyse": "Strukturanalyse",
             "schutzbedarf": "Schutzbedarfsfeststellung",
@@ -257,7 +261,9 @@ async def create_job(job_in: JobCreate, background_tasks: BackgroundTasks) -> Jo
         completed_at=None,
         result_data=None,
     )
-    jobs_store[job_id] = job_status
+    # Anstatt mittels Indexzuweisung einen Eintrag zu erstellen, die set-Methode nutzen.
+    # JobsStore ist kein dict und unterstützt keine __setitem__-Methode.
+    jobs_store.set(job_status)
 
     if job_type == "export":
         file_format = (job_in.format or "txt").lower()
@@ -296,12 +302,21 @@ async def create_job(job_in: JobCreate, background_tasks: BackgroundTasks) -> Jo
             _run_edit_job, job_id, job_in.project_id, job_in.artifact_id, job_in.instructions
         )
 
+    elif job_type == "normalize":
+        # Normalisierungsjob wird in bsi_normalize.py implementiert und über den dortigen Endpunkt gestartet.
+        # Dieser Job-Typ wird hier nicht direkt unterstützt.
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Job-Typ 'normalize' darf nicht direkt über POST /jobs gestartet werden."
+        )
+
     else:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Job-Typ '{job_in.type}' wird nicht unterstützt.",
         )
 
+    # Rückgabe des initialen Job-Status
     return JobOut(
         id=job_status.id,
         type=job_status.type,

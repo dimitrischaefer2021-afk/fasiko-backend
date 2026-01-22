@@ -1,4 +1,4 @@
-﻿#!/bin/sh
+#!/bin/sh
 set -eu
 
 echo "[entrypoint] FÃ¼hre Alembic-Migrationen ausâ€¦"
